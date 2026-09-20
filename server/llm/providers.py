@@ -195,13 +195,28 @@ def _extra(provider_id: str) -> list[ModelSpec]:
     ]
 
 
-def _promote(models: list[ModelSpec], preferred: str | None) -> tuple[ModelSpec, ...]:
+def _promote(
+    models: list[ModelSpec], preferred: str | None, live_ids: list[str] | None = None
+) -> tuple[ModelSpec, ...]:
+    """Move an environment preferred model to the front of the picker.
+
+    An id the provider does not serve is only trusted when discovery told us
+    nothing. Providers retire models without warning, and a pinned id that has
+    since been decommissioned would otherwise become the default and make every
+    call fail with a 404 while the picker sat full of models that do work.
+    Groq dropped the entire Llama 3.x family this way.
+    """
     if not preferred:
         return tuple(models)
     preferred = preferred.strip()
     for index, spec in enumerate(models):
         if spec.id == preferred:
             return tuple([models[index]] + models[:index] + models[index + 1 :])
+
+    if live_ids:
+        # Discovery worked and did not list it, so it is gone. Keep the served
+        # models rather than defaulting to one that cannot be called.
+        return tuple(models)
     return tuple([ModelSpec(preferred, preferred, note="From environment")] + models)
 
 
@@ -292,7 +307,7 @@ class OpenAICompatibleProvider(BaseProvider):
         merged = _merge_catalogue(
             list(self.curated), live, cap=self.model_cap, families_only=self.families_only
         )
-        return _promote(merged, self.preferred)
+        return _promote(merged, self.preferred, live)
 
     def _client(self):
         try:
@@ -448,13 +463,16 @@ class GroqProvider(OpenAICompatibleProvider):
     def __init__(self) -> None:
         self.env_key = settings.GROQ_API_KEY
         self.preferred = settings.MODEL_OVERRIDES.get("groq")
+        # Groq retired the whole Llama 3.x family, so nothing from it is listed
+        # here. Discovery adds whatever else the account can call.
         self.curated = [
-            ModelSpec("llama-3.3-70b-versatile", "Llama 3.3 70B Versatile",
+            ModelSpec("openai/gpt-oss-120b", "GPT OSS 120B",
                       note="Strong all rounder, the best default here"),
-            ModelSpec("openai/gpt-oss-120b", "GPT OSS 120B", note="Deeper reasoning"),
-            ModelSpec("openai/gpt-oss-20b", "GPT OSS 20B", note="Fast", cheap=True),
-            ModelSpec("llama-3.1-8b-instant", "Llama 3.1 8B Instant",
-                      note="Cheapest, good for classification", cheap=True),
+            ModelSpec("openai/gpt-oss-20b", "GPT OSS 20B",
+                      note="Fast and cheap, good for classification", cheap=True),
+            ModelSpec("qwen/qwen3.8-27b", "Qwen3.8 27B"),
+            ModelSpec("groq/compound", "Compound", note="Tool augmented"),
+            ModelSpec("groq/compound-mini", "Compound Mini", cheap=True),
         ] + _extra(self.id)
 
 
@@ -703,8 +721,10 @@ class CloudflareProvider(OpenAICompatibleProvider):
                       note="Quick and capable default"),
             ModelSpec("@cf/openai/gpt-oss-120b", "GPT OSS 120B",
                       note="128k context, strongest reasoning here"),
-            ModelSpec("@cf/meta/llama-3.1-8b-instruct-fast", "Llama 3.1 8B Instruct Fast",
+            ModelSpec("@cf/meta/llama-3.1-8b-instruct-fp8", "Llama 3.1 8B Instruct FP8",
                       note="Cheapest per neuron", cheap=True),
+            ModelSpec("@cf/meta/llama-3.2-3b-instruct", "Llama 3.2 3B Instruct",
+                      note="Smallest, for classification", cheap=True),
         ] + _extra(self.id)
 
     @property
@@ -775,8 +795,11 @@ class CloudflareProvider(OpenAICompatibleProvider):
         if live is None:
             live = self._discover()
             _cache_put(self.id, live, tag)
-        return _promote(_merge_catalogue(list(self.curated), live, cap=self.model_cap),
-                        self.preferred)
+        return _promote(
+            _merge_catalogue(list(self.curated), live, cap=self.model_cap),
+            self.preferred,
+            live,
+        )
 
     def verify(self) -> list[str]:
         if not (self.api_key and self.account_id):
@@ -937,7 +960,6 @@ class GeminiProvider(BaseProvider):
             ModelSpec("gemini-2.5-flash-lite", "Gemini 2.5 Flash Lite",
                       note="Fastest and cheapest", cheap=True),
             ModelSpec("gemini-2.5-pro", "Gemini 2.5 Pro", note="Deepest reasoning"),
-            ModelSpec("gemini-2.0-flash", "Gemini 2.0 Flash", cheap=True),
         ] + _extra(self.id)
         # One SDK client per credential, never one per adapter, so a visitor's
         # key can never be reused for someone else's request.
@@ -982,7 +1004,7 @@ class GeminiProvider(BaseProvider):
             ModelSpec(spec.id, self._labels.get(spec.id, spec.label), spec.note, spec.cheap)
             for spec in merged
         ]
-        return _promote(merged, self.preferred)
+        return _promote(merged, self.preferred, live)
 
     def _client(self):
         api_key = self.api_key
@@ -1162,8 +1184,11 @@ class AnthropicProvider(BaseProvider):
         if live is None:
             live = self._discover()
             _cache_put(self.id, live, self.api_key)
-        return _promote(_merge_catalogue(list(self.curated), live, cap=self.model_cap),
-                        self.preferred)
+        return _promote(
+            _merge_catalogue(list(self.curated), live, cap=self.model_cap),
+            self.preferred,
+            live,
+        )
 
     def verify(self) -> list[str]:
         if not self.api_key:

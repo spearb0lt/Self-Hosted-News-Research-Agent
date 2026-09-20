@@ -159,8 +159,10 @@ class Scored:
     blocked_by_guard: str
 
 
-def score_cases(cases: tuple[Case, ...] = CASES) -> list[Scored]:
-    embedder = embeddings.resolve()
+def score_cases(
+    cases: tuple[Case, ...] = CASES, *, backend: str | None = None
+) -> list[Scored]:
+    embedder = embeddings.resolve(backend)
     texts: list[str] = []
     for case in cases:
         texts.append(build_text(case.left_title, case.left_body))
@@ -215,8 +217,8 @@ def evaluate(scored: list[Scored], threshold: float) -> dict[str, Any]:
     }
 
 
-def report(scored: list[Scored], threshold: float) -> None:
-    embedder = embeddings.resolve()
+def report(scored: list[Scored], threshold: float, backend: str | None = None) -> None:
+    embedder = embeddings.resolve(backend)
     print(f"Backend      {embedder.label} ({embedder.id}), dim {embedder.dim}")
     print(f"Threshold    {threshold:.2f} for clustering")
     print()
@@ -379,6 +381,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", default="eval-pairs.json")
     parser.add_argument("--labelled", default="",
                         help="Score a file you have finished labelling.")
+    parser.add_argument("--backend", default="",
+                        help="Score with a specific embedding backend instead of the "
+                             "automatically chosen one, for example onnx or gemini_embed.")
+    parser.add_argument("--all-backends", action="store_true",
+                        help="Score every available backend and compare them.")
     args = parser.parse_args(argv)
 
     if args.labelled:
@@ -386,13 +393,31 @@ def main(argv: list[str] | None = None) -> int:
     if args.workspace:
         return export_pairs(args.workspace, args.sample, Path(args.out))
 
-    scored = score_cases()
+    if args.all_backends:
+        print(f"{'BACKEND':<28} {'dim':>4} {'cluster':>8} {'prec':>6} {'recall':>7} {'F1':>6}")
+        print("-" * 64)
+        for eid, embedder in embeddings.embedder_map().items():
+            if not embedder.is_available():
+                continue
+            try:
+                rows = score_cases(backend=eid)
+            except Exception as exc:  # noqa: BLE001 - one backend must not stop the rest
+                print(f"{embedder.label[:28]:<28} failed: {str(exc)[:30]}")
+                continue
+            cut = embeddings.thresholds(embedder)[1]
+            m = evaluate(rows, cut)
+            print(f"{embedder.label[:28]:<28} {embedder.dim:>4} {cut:>8.2f} "
+                  f"{m['precision']:>6.3f} {m['recall']:>7.3f} {m['f1']:>6.3f}")
+        return 0
+
+    backend = args.backend or None
+    scored = score_cases(backend=backend)
     if args.sweep:
         sweep(scored)
         return 0
 
-    threshold = args.threshold or embeddings.thresholds(embeddings.resolve())[1]
-    report(scored, threshold)
+    threshold = args.threshold or embeddings.thresholds(embeddings.resolve(backend))[1]
+    report(scored, threshold, backend)
     return 0
 
 

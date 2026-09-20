@@ -17,7 +17,7 @@ from typing import Any
 
 from ..llm import LLMError
 from ..llm import registry as llm
-from ..util import tokens, truncate
+from ..util import slugify, tokens, truncate
 
 SYSTEM = (
     "You are a news desk editor sorting stories into a fixed set of sections. "
@@ -90,7 +90,18 @@ def classify(
     """
     if not items:
         return {}
-    valid = {theme["id"] for theme in themes}
+    # Weaker models answer with the section's label rather than its id often
+    # enough that rejecting those would send whole batches to the keyword
+    # fallback. Groq's gpt-oss-120b does it consistently. Both spellings, and a
+    # slugified label, therefore resolve to the same theme.
+    resolve: dict[str, str] = {}
+    for theme in themes:
+        theme_id = theme["id"]
+        resolve[theme_id.lower()] = theme_id
+        label = (theme.get("label") or "").strip().lower()
+        if label:
+            resolve[label] = theme_id
+            resolve[slugify(label)] = theme_id
     default = themes[-1]["id"] if themes else "other"
     results: dict[int, str] = {}
 
@@ -119,8 +130,9 @@ def classify(
                     continue
                 if not 0 <= position < len(batch):
                     continue
-                theme = str(row.get("theme") or "").strip()
-                if theme in valid:
+                answer = str(row.get("theme") or "").strip().lower()
+                theme = resolve.get(answer) or resolve.get(slugify(answer))
+                if theme:
                     assigned[position] = theme
         except (LLMError, ValueError):
             assigned = {}

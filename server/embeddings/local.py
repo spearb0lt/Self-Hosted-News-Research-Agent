@@ -42,12 +42,13 @@ class LexicalEmbedder(BaseEmbedder):
     quality = 1
     dim = 1024
     max_batch = 512
-    # This space is compressed compared with a sentence encoder's: measured on
-    # reworded coverage of one event it returns about 0.43, and on unrelated
-    # text about 0.00. The cuts are therefore much lower, which is exactly why
-    # they cannot be shared with the other backends.
-    duplicate_threshold = 0.70
-    cluster_threshold = 0.33
+    # Measured on the eval set: same-event pairs land between 0.29 and 0.57,
+    # unrelated text below 0.07. An earlier cut of 0.33 sat ABOVE the lowest
+    # true pair, so this backend was silently failing to group events it should
+    # have. The cuts are far lower than any encoder's, which is exactly why they
+    # cannot be shared.
+    duplicate_threshold = 0.62
+    cluster_threshold = 0.24
 
     def is_available(self) -> bool:
         return True
@@ -114,12 +115,11 @@ class OnnxEmbedder(BaseEmbedder):
     # MiniLM was trained at 256 tokens and a headline plus lead paragraph fits
     # well inside that, so a longer window would cost time for no accuracy.
     max_tokens = 256
-    # Measured on this model: two outlets on one event score about 0.76, and
-    # genuinely identical syndicated copy scores above 0.95. The duplicate cut
-    # sits above the former so that independent reporting is grouped rather
-    # than discarded.
-    duplicate_threshold = 0.92
-    cluster_threshold = 0.70
+    # Measured on the eval set: same-event pairs run 0.72 to 0.85, unrelated
+    # text below 0.04. The duplicate cut sits above the top of the same-event
+    # range so independent reporting is grouped rather than discarded.
+    duplicate_threshold = 0.90
+    cluster_threshold = 0.68
 
     def __init__(self) -> None:
         self._session: Any = None
