@@ -44,3 +44,10 @@ All of those needed the real pipeline against real sources, or a real browser.
   shipped set.
 - Frontend: load the pages in a browser and check the console, not just
   `npm run build`.
+
+Never run `npm run build` while `npm run dev` is running. Both write to
+`.next`, and the production build replaces chunks the dev server still has
+open, which surfaces later as `Cannot find module './331.js'` from
+`webpack-runtime.js`. Stop the dev server first, or recover with
+`rm -rf .next && npm run dev`. Nothing is lost: `.next` is build output and is
+gitignored.
