@@ -1,0 +1,26 @@
+# Extras for a deployment that controls its own machine: local Docker, an
+# Oracle Always Free VM, Render, or a laptop. None of this fits in a serverless
+# bundle, and nothing here is required. Each package switches on one capability
+# that app/runtime.py otherwise reports as unavailable, with the reason shown
+# in the UI rather than failing at call time.
+
+-r requirements.txt
+
+# Headless browser rendering for sites that build their article list in
+# JavaScript. After installing, run: playwright install chromium
+playwright>=1.49.0
+
+# The full PyTorch sentence encoder. Better than the bundled ONNX model at
+# recognising two differently worded reports of the same event, at the cost of
+# roughly 1 GB on disk.
+# Install the CPU wheel explicitly, because the default PyPI torch pulls in
+# several hundred megabytes of CUDA libraries that are useless on a CPU host:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+sentence-transformers>=3.3.0
+
+# In process scheduling, so a long running deployment can drive its own digest
+# rather than depending on an external cron hitting /api/cron/tick.
+APScheduler>=3.11.0
+
+# Faster HTML parsing for large crawls.
+selectolax>=0.3.21

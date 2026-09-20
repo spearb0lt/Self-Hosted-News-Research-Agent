@@ -1,0 +1,96 @@
+# Render blueprint. Also a reasonable reference for any other container host,
+# including an Oracle Always Free VM, since the build and start commands are
+# the same anywhere.
+#
+# Note two things about Render's free tier before relying on it:
+#   * A free web service spins down after 15 minutes without traffic and takes
+#     about a minute to wake, so the first request after a quiet night is slow.
+#   * Cron jobs are not available on the free plan at all. Either pay the
+#     minimum for the cron service below, or delete it and drive
+#     /api/cron/run-all from the GitHub Actions workflow in this repository,
+#     which is free.
+
+services:
+  - type: web
+    name: newsroom
+    runtime: python
+    plan: free
+    region: oregon
+    buildCommand: |
+      pip install -r requirements.txt
+      python scripts/fetch_model.py --quiet
+      npm ci --no-audit --no-fund
+      npm run build
+    startCommand: uvicorn server.main:app --host 0.0.0.0 --port $PORT --timeout-keep-alive 65
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.8"
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATA_DIR
+        value: /tmp
+      # A free instance has an ephemeral disk, so the database has to live
+      # off the instance or every restart starts from nothing.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: newsroom-db
+          property: connectionString
+      - key: CRON_SECRET
+        generateValue: true
+      - key: PUBLIC_BASE_URL
+        sync: false
+      # Every provider key is left unset here on purpose. Set the ones you have
+      # in the Render dashboard rather than committing them to the blueprint.
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: CLOUDFLARE_API_TOKEN
+        sync: false
+      - key: CLOUDFLARE_ACCOUNT_ID
+        sync: false
+      - key: REDDIT_CLIENT_ID
+        sync: false
+      - key: REDDIT_CLIENT_SECRET
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+
+  # Paid only. Delete this service and use the GitHub Actions workflow instead
+  # if you want to stay on the free plan.
+  - type: cron
+    name: newsroom-daily
+    runtime: python
+    plan: starter
+    region: oregon
+    schedule: "0 1 * * *"
+    buildCommand: |
+      pip install -r requirements.txt
+      python scripts/fetch_model.py --quiet
+    startCommand: python -m server.ops.cli run-all
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.8"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: newsroom-db
+          property: connectionString
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+
+databases:
+  - name: newsroom-db
+    plan: free
+    region: oregon
+    # A free Render database expires 30 days after it is created, with a 14 day
+    # grace period to upgrade before it is deleted. For anything you intend to
+    # keep, point DATABASE_URL at Neon or Supabase instead, whose free tiers do
+    # not expire.
+    postgresMajorVersion: "17"

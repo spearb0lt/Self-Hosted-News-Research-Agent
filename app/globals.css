@@ -1,0 +1,298 @@
+@import "tailwindcss";
+@config "../tailwind.config.ts";
+
+@source "../app/**/*.{ts,tsx}";
+@source "../components/**/*.{ts,tsx}";
+
+/* --------------------------------------------------------------------------
+   Colour tokens.
+
+   Light is the default. Dark follows the operating system unless the reader
+   has explicitly chosen light, and an explicit dark choice wins over the
+   operating system. The three blocks below are the whole theming story: every
+   component reads these variables and nothing else.
+   -------------------------------------------------------------------------- */
+
+:root {
+  color-scheme: light;
+
+  --canvas: #f6f7f9;
+  --surface: #ffffff;
+  --raised: #eef1f5;
+  --line: #dde2e9;
+  --line-strong: #c3cad6;
+
+  --ink: #14171d;
+  --muted: #58616f;
+  --faint: #838d9c;
+
+  --accent: #2d55d4;
+  --accent-hover: #2546b4;
+  --accent-ink: #ffffff;
+  --accent-soft: #e7ecfc;
+
+  --ok: #14714a;
+  --ok-soft: #e0f3e9;
+  --warn: #8a5800;
+  --warn-soft: #fbeed4;
+  --danger: #ab2018;
+  --danger-soft: #fbe6e4;
+
+  --ring: #2d55d4;
+  --shadow-sm: 0 1px 2px rgb(16 20 28 / 0.07);
+  --shadow-md: 0 1px 2px rgb(16 20 28 / 0.05), 0 10px 26px rgb(16 20 28 / 0.08);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --canvas: #0c0f15;
+    --surface: #141923;
+    --raised: #1c2330;
+    --line: #28303e;
+    --line-strong: #3b4657;
+
+    --ink: #e9edf4;
+    --muted: #9ba6b7;
+    --faint: #74808f;
+
+    --accent: #7ea2ff;
+    --accent-hover: #9ab6ff;
+    --accent-ink: #0c0f15;
+    --accent-soft: #1a2440;
+
+    --ok: #5fd2a0;
+    --ok-soft: #10281f;
+    --warn: #e6b355;
+    --warn-soft: #2a2213;
+    --danger: #ff8d82;
+    --danger-soft: #2d1614;
+
+    --ring: #7ea2ff;
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.5);
+    --shadow-md: 0 1px 2px rgb(0 0 0 / 0.45), 0 10px 26px rgb(0 0 0 / 0.4);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --canvas: #0c0f15;
+  --surface: #141923;
+  --raised: #1c2330;
+  --line: #28303e;
+  --line-strong: #3b4657;
+
+  --ink: #e9edf4;
+  --muted: #9ba6b7;
+  --faint: #74808f;
+
+  --accent: #7ea2ff;
+  --accent-hover: #9ab6ff;
+  --accent-ink: #0c0f15;
+  --accent-soft: #1a2440;
+
+  --ok: #5fd2a0;
+  --ok-soft: #10281f;
+  --warn: #e6b355;
+  --warn-soft: #2a2213;
+  --danger: #ff8d82;
+  --danger-soft: #2d1614;
+
+  --ring: #7ea2ff;
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.5);
+  --shadow-md: 0 1px 2px rgb(0 0 0 / 0.45), 0 10px 26px rgb(0 0 0 / 0.4);
+}
+
+/* Expose the tokens to Tailwind. `inline` keeps the var() reference in the
+   generated rule, so a theme switch repaints without rebuilding any CSS. */
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+    "Noto Sans", sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+/* --------------------------------------------------------------------------
+   Base
+   -------------------------------------------------------------------------- */
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background-color: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  /* 360px wide phones are in scope, so nothing is allowed to push the page sideways. */
+  overflow-x: hidden;
+}
+
+* {
+  min-width: 0;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+a {
+  color: inherit;
+}
+
+input,
+textarea,
+select,
+button {
+  font: inherit;
+  color: inherit;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--faint);
+}
+
+/* --------------------------------------------------------------------------
+   Utilities used in more than one place
+   -------------------------------------------------------------------------- */
+
+.skeleton {
+  background-image: linear-gradient(
+    90deg,
+    var(--raised) 0%,
+    var(--line) 40%,
+    var(--raised) 80%
+  );
+  background-size: 300% 100%;
+  animation: skeleton-sweep 1.4s ease-in-out infinite;
+  border-radius: 6px;
+}
+
+@keyframes skeleton-sweep {
+  0% {
+    background-position: 150% 0;
+  }
+  100% {
+    background-position: -50% 0;
+  }
+}
+
+.spin {
+  animation: spin 900ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton,
+  .spin {
+    animation: none;
+  }
+}
+
+/* Long URLs and headlines must wrap rather than widen the page. */
+.break-anywhere {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Rendered digest HTML, which we do not control the markup of. */
+.prose-digest {
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+.prose-digest h1,
+.prose-digest h2,
+.prose-digest h3 {
+  font-weight: 650;
+  line-height: 1.25;
+  margin-top: 1.6em;
+  margin-bottom: 0.5em;
+}
+.prose-digest h1 {
+  font-size: 1.4rem;
+}
+.prose-digest h2 {
+  font-size: 1.15rem;
+}
+.prose-digest h3 {
+  font-size: 1rem;
+}
+.prose-digest p,
+.prose-digest ul,
+.prose-digest ol {
+  margin-bottom: 0.9em;
+}
+.prose-digest ul,
+.prose-digest ol {
+  padding-left: 1.3em;
+}
+.prose-digest ul {
+  list-style: disc;
+}
+.prose-digest ol {
+  list-style: decimal;
+}
+.prose-digest li {
+  margin-bottom: 0.3em;
+}
+.prose-digest a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.prose-digest code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  background: var(--raised);
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+}
+.prose-digest hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 1.6em 0;
+}
+.prose-digest blockquote {
+  border-left: 3px solid var(--line-strong);
+  padding-left: 0.9em;
+  color: var(--muted);
+  margin-bottom: 0.9em;
+}

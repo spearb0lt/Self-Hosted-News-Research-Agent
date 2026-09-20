@@ -1,0 +1,62 @@
+{
+  "slug": "ai-research",
+  "name": "AI Research",
+  "description": "For researchers and applied ML engineers tracking new papers, lab releases and the practitioner conversation around them. Primary arXiv feeds sit next to the lab blogs that announce the work.",
+  "timezone": "UTC",
+  "language": "en",
+  "themes": [
+    {
+      "id": "papers",
+      "label": "Papers & Preprints",
+      "hint": "A specific piece of published research with authors and a method: architectures, training and optimisation techniques, theory, and empirical studies. Usually an arXiv posting or a conference paper rather than a product announcement."
+    },
+    {
+      "id": "models-releases",
+      "label": "Model & Dataset Releases",
+      "hint": "Artifacts made available to use: model weights and checkpoints, open datasets, tokenizers, libraries and inference stacks, with licence and access terms. Something is downloadable or callable as a result."
+    },
+    {
+      "id": "evaluation",
+      "label": "Evaluation & Benchmarks",
+      "hint": "Measuring systems rather than building them: new benchmarks and leaderboards, contamination and reproducibility disputes, red teaming results, human preference studies and claims that a reported score does not hold up."
+    },
+    {
+      "id": "safety-alignment",
+      "label": "Safety & Alignment",
+      "hint": "Controlling model behaviour: interpretability, RLHF and preference optimisation, jailbreaks and prompt injection, deception and sandbagging findings, model cards, system prompts and refusal behaviour, and lab safety frameworks."
+    },
+    {
+      "id": "infrastructure",
+      "label": "Training Infrastructure",
+      "hint": "What it takes to run the work: GPU and TPU clusters, distributed training and parallelism, quantisation and serving efficiency, kernels and compilers, and the cost or energy accounting of a training run."
+    },
+    {
+      "id": "applications",
+      "label": "Applied AI",
+      "hint": "AI put to work in a domain: code generation, biology and drug discovery, robotics and embodied agents, healthcare, science acceleration, and deployment reports from production systems."
+    },
+    {
+      "id": "community-policy",
+      "label": "Community & Governance",
+      "hint": "The field talking about itself: funding, hiring and lab reorganisations, conference and peer review controversy, open versus closed weights debate, compute export rules and AI regulation affecting researchers."
+    }
+  ],
+  "keywords": {
+    "include": ["arXiv", "transformer", "benchmark", "fine-tuning", "open weights", "LLM", "diffusion", "RLHF"],
+    "exclude": ["stock tip", "crypto airdrop", "horoscope"],
+    "boost": ["state of the art", "released weights", "ablation", "scaling law", "interpretability", "reproduce"]
+  },
+  "config": {"lookback_hours": 48, "digest_bullets": 6},
+  "sources": [
+    {"kind": "rss", "name": "arXiv - cs.AI", "url": "http://export.arxiv.org/api/query?search_query=cat:cs.AI&sortBy=submittedDate&sortOrder=descending&max_results=50", "weight": 1.2, "config": {"category": "cs.AI"}},
+    {"kind": "rss", "name": "arXiv - cs.CL", "url": "http://export.arxiv.org/api/query?search_query=cat:cs.CL&sortBy=submittedDate&sortOrder=descending&max_results=50", "weight": 1.2, "config": {"category": "cs.CL"}},
+    {"kind": "rss", "name": "arXiv - cs.LG", "url": "http://export.arxiv.org/api/query?search_query=cat:cs.LG&sortBy=submittedDate&sortOrder=descending&max_results=50", "weight": 1.2, "config": {"category": "cs.LG"}},
+    {"kind": "rss", "name": "Hugging Face - Blog", "url": "https://huggingface.co/blog/feed.xml", "weight": 1.1, "config": {}},
+    {"kind": "rss", "name": "Google Research - Blog", "url": "https://research.google/blog/rss/", "weight": 1.1, "config": {}},
+    {"kind": "rss", "name": "Google DeepMind - Blog", "url": "https://deepmind.google/blog/rss.xml", "weight": 1.1, "config": {}},
+    {"kind": "rss", "name": "OpenAI - News", "url": "https://openai.com/news/rss.xml", "weight": 1.1, "config": {}},
+    {"kind": "rss", "name": "Import AI - Newsletter", "url": "https://importai.substack.com/feed", "weight": 1.0, "config": {}},
+    {"kind": "reddit", "name": "Reddit - r/MachineLearning", "url": "https://www.reddit.com/r/MachineLearning/", "weight": 0.7, "config": {"subreddit": "MachineLearning", "sort": "hot"}},
+    {"kind": "googlenews", "name": "Google News - Frontier lab announcements", "url": "https://news.google.com/rss/search?q=(Anthropic+OR+OpenAI+OR+DeepMind)+research+when:2d&hl=en-US&gl=US&ceid=US:en", "weight": 0.7, "config": {"query": "(Anthropic OR OpenAI OR DeepMind) research when:2d", "hl": "en-US", "gl": "US", "ceid": "US:en"}}
+  ]
+}

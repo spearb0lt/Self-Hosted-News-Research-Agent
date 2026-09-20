@@ -1,0 +1,60 @@
+{
+  "slug": "global-tech",
+  "name": "Global Technology",
+  "description": "For engineers, product people and tech investors who want the day's industry news plus what practitioners are actually discussing. Mixes mainstream tech newsrooms with Hacker News and Reddit signal.",
+  "timezone": "UTC",
+  "language": "en",
+  "themes": [
+    {
+      "id": "products-launches",
+      "label": "Products & Launches",
+      "hint": "Something shipped or was announced with a date: hardware, an app or OS release, a model or API, a pricing change or a deprecation. The story is the artifact and what it does, not the company's finances."
+    },
+    {
+      "id": "platforms-business",
+      "label": "Platforms & Business",
+      "hint": "Company as business: earnings, layoffs and reorganisations, executive changes, acquisitions and funding rounds, market share, advertising and subscription economics, and platform rule changes affecting developers or creators."
+    },
+    {
+      "id": "ai-compute",
+      "label": "AI & Compute",
+      "hint": "Machine learning systems and the infrastructure under them: model capability claims and benchmarks, training and inference cost, GPUs and accelerators, data centres and energy draw, agents and tooling. Excludes AI regulation, which is Policy & Regulation."
+    },
+    {
+      "id": "security-privacy",
+      "label": "Security & Privacy",
+      "hint": "Breaches and disclosed vulnerabilities, ransomware and state linked intrusions, patches and CVEs, surveillance and tracking, encryption, and data handling failures. A named victim, exploit or exposed dataset is the giveaway."
+    },
+    {
+      "id": "policy-regulation",
+      "label": "Policy & Regulation",
+      "hint": "Governments acting on technology: antitrust suits and remedies, EU, US, UK, India and China rules, export controls and tariffs on chips, content moderation and age verification law, copyright and patent rulings."
+    },
+    {
+      "id": "engineering-craft",
+      "label": "Engineering & Open Source",
+      "hint": "Work practitioners do: language and framework releases, notable open source projects and licence changes, architecture and performance write ups, developer tooling, standards, and postmortems of real incidents."
+    },
+    {
+      "id": "science-frontier",
+      "label": "Science & Frontier Tech",
+      "hint": "Technology not yet an industry: space launches and missions, quantum computing, biotech and neurotech, robotics, fusion and novel materials, and the research results behind them."
+    }
+  ],
+  "keywords": {
+    "include": ["launch", "open source", "chip", "cloud", "model", "vulnerability", "antitrust", "API"],
+    "exclude": ["coupon", "deal of the day", "best black friday", "horoscope"],
+    "boost": ["acquires", "shuts down", "CVE", "benchmark", "release", "lawsuit", "outage"]
+  },
+  "config": {"lookback_hours": 24, "digest_bullets": 6},
+  "sources": [
+    {"kind": "hackernews", "name": "Hacker News - Front Page", "url": "https://news.ycombinator.com/rss", "weight": 1.2, "config": {"feed": "frontpage", "min_points": 50}},
+    {"kind": "rss", "name": "Ars Technica - All", "url": "https://feeds.arstechnica.com/arstechnica/index", "weight": 1.2, "config": {}},
+    {"kind": "rss", "name": "The Verge - All", "url": "https://www.theverge.com/rss/index.xml", "weight": 1.0, "config": {}},
+    {"kind": "rss", "name": "TechCrunch - Latest", "url": "https://techcrunch.com/feed/", "weight": 1.0, "config": {}},
+    {"kind": "rss", "name": "MIT Technology Review", "url": "https://www.technologyreview.com/feed/", "weight": 1.1, "config": {}},
+    {"kind": "rss", "name": "WIRED - Business", "url": "https://www.wired.com/feed/category/business/latest/rss", "weight": 0.9, "config": {}},
+    {"kind": "rss", "name": "The Register - Headlines", "url": "https://www.theregister.com/headlines.atom", "weight": 0.9, "config": {}},
+    {"kind": "reddit", "name": "Reddit - r/technology", "url": "https://www.reddit.com/r/technology/", "weight": 0.6, "config": {"subreddit": "technology", "sort": "hot"}}
+  ]
+}

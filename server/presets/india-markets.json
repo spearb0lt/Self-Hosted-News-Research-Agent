@@ -1,0 +1,62 @@
+{
+  "slug": "india-markets",
+  "name": "India Markets & Finance",
+  "description": "For analysts, traders and finance desks tracking Indian listed companies, the regulators that govern them and the macro data that moves the indices. Pairs primary regulator filings with the main business newsrooms.",
+  "timezone": "Asia/Kolkata",
+  "language": "en",
+  "themes": [
+    {
+      "id": "regulation",
+      "label": "Regulation & Policy",
+      "hint": "A rule, circular, consultation paper or enforcement order issued by SEBI, RBI, IRDAI, PFRDA or an exchange, or reporting about one. Choose this when the story turns on what a regulator decided or proposed, not on how the market reacted to it."
+    },
+    {
+      "id": "markets",
+      "label": "Markets & Macro",
+      "hint": "Index levels, sector moves, FII and DII flows, bond yields, rupee, commodity prices, and the macro prints that drive them: CPI, WPI, IIP, GDP, trade deficit, MPC rate decisions. Prices and aggregates rather than a single company."
+    },
+    {
+      "id": "corporate",
+      "label": "Corporate Actions & Earnings",
+      "hint": "A specific listed company's quarterly results, guidance, board decision, dividend, buyback, split, capex plan, management change or exchange announcement. The unit of the story is one issuer."
+    },
+    {
+      "id": "dealmaking",
+      "label": "Deals, IPOs & Funding",
+      "hint": "Primary market and ownership change: IPO and QIP filings, listings and grey market chatter, mergers, acquisitions, stake sales, block deals, private equity and venture rounds, insolvency resolutions and asset sales."
+    },
+    {
+      "id": "banking-credit",
+      "label": "Banking & Credit",
+      "hint": "Bank and NBFC balance sheets: deposit and credit growth, asset quality and provisioning, liquidity and repo operations, licences, mergers of lenders, microfinance and housing finance stress. Excludes equity market moves in bank stocks, which are Markets & Macro."
+    },
+    {
+      "id": "enforcement",
+      "label": "Enforcement & Fraud",
+      "hint": "Investigations, insider trading and front running cases, penalties, debarments, raids by ED, CBI or income tax, auditor resignations, accounting irregularities and litigation against market participants. The story is alleged or proven wrongdoing."
+    },
+    {
+      "id": "global-spillover",
+      "label": "Global Spillover",
+      "hint": "Offshore events framed by their effect on India: Fed and ECB decisions, crude and dollar index moves, US and China data, tariffs, sanctions, index inclusion by MSCI or FTSE, and foreign investor positioning in Indian assets."
+    }
+  ],
+  "keywords": {
+    "include": ["SEBI", "RBI", "NSE", "BSE", "Nifty", "Sensex", "MPC", "rupee", "FII", "IPO", "NBFC", "GST"],
+    "exclude": ["horoscope", "cricket", "box office", "recipe"],
+    "boost": ["circular", "consultation paper", "rate decision", "results", "guidance", "penalty", "insider trading", "listing"]
+  },
+  "config": {"lookback_hours": 24, "digest_bullets": 6},
+  "sources": [
+    {"kind": "rss", "name": "SEBI - Updates", "url": "https://www.sebi.gov.in/sebirss.xml", "weight": 1.5, "config": {}},
+    {"kind": "rss", "name": "RBI - Press Releases", "url": "https://rbi.org.in/pressreleases_rss.xml", "weight": 1.5, "config": {}},
+    {"kind": "rss", "name": "RBI - Notifications", "url": "https://rbi.org.in/notifications_rss.xml", "weight": 1.4, "config": {}},
+    {"kind": "rss", "name": "NSE - Announcements", "url": "https://nsearchives.nseindia.com/content/RSS/Online_announcements.xml", "weight": 1.2, "config": {}},
+    {"kind": "rss", "name": "BSE - Notices", "url": "https://www.bseindia.com/data/xml/notices.xml", "weight": 1.1, "config": {}},
+    {"kind": "rss", "name": "Mint - Markets", "url": "https://www.livemint.com/rss/markets", "weight": 1.0, "config": {}},
+    {"kind": "rss", "name": "Economic Times - Markets", "url": "https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms", "weight": 1.0, "config": {}},
+    {"kind": "rss", "name": "Business Standard - Markets", "url": "https://www.business-standard.com/rss/markets-106.rss", "weight": 1.0, "config": {}},
+    {"kind": "rss", "name": "Moneycontrol - Business", "url": "https://www.moneycontrol.com/rss/business.xml", "weight": 0.9, "config": {}},
+    {"kind": "googlenews", "name": "Google News - Reuters India business", "url": "https://news.google.com/rss/search?q=site:reuters.com+India+business+when:2d&hl=en-IN&gl=IN&ceid=IN:en", "weight": 0.8, "config": {"query": "site:reuters.com India business when:2d", "hl": "en-IN", "gl": "IN", "ceid": "IN:en"}}
+  ]
+}

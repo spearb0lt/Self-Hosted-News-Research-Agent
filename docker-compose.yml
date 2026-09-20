@@ -1,0 +1,77 @@
+# A complete local stack: the app, Postgres, and optionally Ollama so the whole
+# thing runs with no third party API key at all.
+#
+#   docker compose up -d                  app plus Postgres
+#   docker compose --profile local-ai up   also starts Ollama
+#
+# The `cron` service is deliberately not started by default. Run it on a
+# schedule from the host instead, or start it once to see a full run:
+#   docker compose run --rm cron
+
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://newsroom:newsroom@db:5432/newsroom
+      DATA_DIR: /data
+      # Reachable from inside the compose network rather than on localhost,
+      # which inside a container means the container itself.
+      OLLAMA_BASE_URL: http://ollama:11434
+    volumes:
+      - app-data:/data
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: newsroom
+      POSTGRES_PASSWORD: newsroom
+      POSTGRES_DB: newsroom
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      # The app's first request creates the schema, so it must not start
+      # before Postgres is genuinely accepting connections.
+      test: ["CMD-SHELL", "pg_isready -U newsroom -d newsroom"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  cron:
+    build: .
+    command: ["cron"]
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://newsroom:newsroom@db:5432/newsroom
+      DATA_DIR: /data
+      OLLAMA_BASE_URL: http://ollama:11434
+    volumes:
+      - app-data:/data
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles: ["cron"]
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    profiles: ["local-ai"]
+    restart: unless-stopped
+
+volumes:
+  app-data:
+  db-data:
+  ollama-data:

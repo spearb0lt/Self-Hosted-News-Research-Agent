@@ -1,0 +1,93 @@
+# The scheduler for a Vercel Hobby deployment.
+#
+# Hobby accounts are limited to one cron run per day, and a deployment fails to
+# build if vercel.json asks for anything more frequent. That is fine for the
+# daily digest itself, but a run that pauses at the 300 second function limit
+# needs something to nudge it along, and waiting 24 hours for the next tick
+# would leave the digest half built.
+#
+# This workflow fills that gap for free: it starts the daily run once, and
+# every 15 minutes it calls the tick endpoint, which continues any paused run
+# and does nothing at all when there is none. Delete it if you are on Vercel
+# Pro, where vercel.json can schedule both directly.
+#
+# Setup: add two repository secrets under Settings, Secrets and variables,
+# Actions:
+#   APP_URL      https://your-deployment.vercel.app
+#   CRON_SECRET  the same value you set in the Vercel environment
+
+name: Pipeline scheduler
+
+on:
+  schedule:
+    # 01:00 UTC, the daily full run. Pick a time when your sources have
+    # published; this is 06:30 in India.
+    - cron: "0 1 * * *"
+    # Every 15 minutes, continue anything that paused at the time limit.
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      full_run:
+        description: "Start a full run rather than only continuing paused ones"
+        type: boolean
+        default: false
+
+# A tick that overlaps the previous one would work, because the run lock is in
+# the database, but there is no reason to pay for it.
+concurrency:
+  group: pipeline-scheduler
+  cancel-in-progress: false
+
+jobs:
+  drive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Decide which endpoint to call
+        id: choose
+        run: |
+          if [ "${{ github.event.schedule }}" = "0 1 * * *" ] || \
+             [ "${{ inputs.full_run }}" = "true" ]; then
+            echo "endpoint=run-all" >> "$GITHUB_OUTPUT"
+          else
+            echo "endpoint=tick" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Drive the pipeline
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          ENDPOINT: ${{ steps.choose.outputs.endpoint }}
+        run: |
+          set -euo pipefail
+          if [ -z "${APP_URL:-}" ]; then
+            echo "APP_URL secret is not set." >&2
+            exit 1
+          fi
+
+          # A paused run needs several calls to finish, so the tick is repeated
+          # until it reports nothing left to do. The endpoint is idempotent and
+          # returns immediately when there is no work, so an idle loop is cheap.
+          for attempt in $(seq 1 12); do
+            response=$(curl -fsS --max-time 310 \
+              -H "Authorization: Bearer ${CRON_SECRET:-}" \
+              -X POST "${APP_URL%/}/api/cron/${ENDPOINT}") || {
+                echo "Request failed on attempt ${attempt}." >&2
+                exit 1
+              }
+            echo "${response}"
+
+            # After the first call, always use the tick endpoint: run-all would
+            # otherwise try to start a second run for the same workspaces.
+            ENDPOINT=tick
+
+            if echo "${response}" | grep -q '"count": *0'; then
+              echo "Nothing left to continue."
+              break
+            fi
+            if ! echo "${response}" | grep -q '"status": *"paused"'; then
+              echo "No paused runs remain."
+              break
+            fi
+            sleep 5
+          done

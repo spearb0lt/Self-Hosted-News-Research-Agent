@@ -1,0 +1,42 @@
+# Secrets
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+web/node_modules/
+web/.next/
+web/out/
+*.tsbuildinfo
+
+# Vercel
+.vercel/
+
+# Local data
+data/
+*.db
+*.db-journal
+*.sqlite3
+
+# Downloaded model weights. Fetched by scripts/fetch_model.py, never committed.
+Semantic Models/**
+!Semantic Models/README.md
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

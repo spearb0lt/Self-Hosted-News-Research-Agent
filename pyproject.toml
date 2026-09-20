@@ -1,0 +1,24 @@
+# Vercel reads the Python version from .python-version or from this file.
+# 3.12 is Vercel's current default and what this project is developed against;
+# 3.13 and 3.14 also work but pin deliberately so a platform default change
+# cannot silently move the runtime under a deployed app.
+[project]
+name = "newsroom"
+version = "1.0.0"
+description = "A configurable news aggregator: ingest, deduplicate, cluster, digest"
+requires-python = ">=3.11,<3.15"
+dynamic = ["dependencies"]
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
+
+[tool.setuptools]
+packages = ["server"]
+
+[tool.ruff]
+line-length = 96
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = ["E501", "B008", "SIM108"]

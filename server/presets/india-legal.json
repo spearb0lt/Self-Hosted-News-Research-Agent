@@ -1,0 +1,57 @@
+{
+  "slug": "india-legal",
+  "name": "India Legal & Courts",
+  "description": "For litigators, in-house counsel and legal journalists who need same day awareness of judgments, listings and regulatory circulars. Combines the legal trade press with primary regulator feeds.",
+  "timezone": "Asia/Kolkata",
+  "language": "en",
+  "themes": [
+    {
+      "id": "supreme-court",
+      "label": "Supreme Court",
+      "hint": "Proceedings before the Supreme Court of India: judgments, interim orders, constitution bench hearings, oral remarks, collegium recommendations and cause list events. The forum is the deciding fact, whatever the subject matter."
+    },
+    {
+      "id": "high-courts",
+      "label": "High Courts & Tribunals",
+      "hint": "Rulings and hearings in a High Court, NCLT, NCLAT, SAT, NGT, CAT or a consumer or arbitration forum. Name the bench where possible. Trial court and magistrate matters also belong here."
+    },
+    {
+      "id": "regulatory",
+      "label": "Regulatory & Compliance",
+      "hint": "Binding instruments from the executive side: SEBI and RBI circulars, MCA notifications, gazette publications, rules framed under a statute, filing deadlines and compliance calendars. No court is involved."
+    },
+    {
+      "id": "legislation",
+      "label": "Legislation & Reform",
+      "hint": "Bills, ordinances, draft rules out for comment, law commission and committee reports, and debate over amending a statute. The law is being made or proposed rather than applied."
+    },
+    {
+      "id": "profession",
+      "label": "Legal Profession",
+      "hint": "The bar and bench as an institution: judicial appointments, transfers and recusals, Bar Council actions, law firm partner moves and mandates, legal education, contempt and disciplinary proceedings against lawyers."
+    },
+    {
+      "id": "enforcement",
+      "label": "Investigation & Enforcement",
+      "hint": "Action by ED, CBI, SFIO, income tax or the police: chargesheets, arrests, attachments, bail and remand, extradition, and prosecution of economic offences. The story is an investigation rather than an adjudication."
+    }
+  ],
+  "keywords": {
+    "include": ["Supreme Court", "High Court", "bench", "judgment", "petition", "NCLT", "SEBI", "circular", "bail", "writ"],
+    "exclude": ["horoscope", "box office", "recipe", "transfer window"],
+    "boost": ["verdict", "constitution bench", "stay", "quashed", "notification", "ordinance", "chargesheet", "collegium"]
+  },
+  "config": {"lookback_hours": 24, "digest_bullets": 6},
+  "sources": [
+    {"kind": "rss", "name": "LiveLaw - Latest", "url": "https://www.livelaw.in/google_feeds.xml", "weight": 1.4, "config": {}},
+    {"kind": "rss", "name": "Bar and Bench - Latest", "url": "https://www.barandbench.com/feed", "weight": 1.3, "config": {}},
+    {"kind": "rss", "name": "Verdictum - Judgments", "url": "https://www.verdictum.in/feed", "weight": 1.2, "config": {}},
+    {"kind": "rss", "name": "SCC Online Blog", "url": "https://www.scconline.com/blog/feed/", "weight": 1.2, "config": {}},
+    {"kind": "rss", "name": "SEBI - Circulars & Orders", "url": "https://www.sebi.gov.in/sebirss.xml", "weight": 1.3, "config": {}},
+    {"kind": "rss", "name": "Taxscan - Tax Rulings", "url": "https://www.taxscan.in/feed/", "weight": 0.9, "config": {}},
+    {"kind": "rss", "name": "Legal Era - Profession", "url": "https://www.legaleraonline.com/feed", "weight": 0.8, "config": {}},
+    {"kind": "rss", "name": "The Hindu - National", "url": "https://www.thehindu.com/news/national/feeder/default.rss", "weight": 0.7, "config": {}},
+    {"kind": "googlenews", "name": "Google News - Supreme Court judgments", "url": "https://news.google.com/rss/search?q=%22Supreme+Court%22+judgment+India+when:2d&hl=en-IN&gl=IN&ceid=IN:en", "weight": 0.8, "config": {"query": "\"Supreme Court\" judgment India when:2d", "hl": "en-IN", "gl": "IN", "ceid": "IN:en"}},
+    {"kind": "googlenews", "name": "Google News - Gazette & MCA notifications", "url": "https://news.google.com/rss/search?q=%22Gazette+of+India%22+OR+%22MCA+circular%22+when:7d&hl=en-IN&gl=IN&ceid=IN:en", "weight": 0.8, "config": {"query": "\"Gazette of India\" OR \"MCA circular\" when:7d", "hl": "en-IN", "gl": "IN", "ceid": "IN:en"}}
+  ]
+}

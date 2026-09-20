@@ -1,0 +1,56 @@
+{
+  "slug": "world-news",
+  "name": "World News",
+  "description": "A general international briefing for anyone who wants the day's major stories without a single outlet's framing. Deliberately spreads across British, American, European, Asian and Middle Eastern newsrooms.",
+  "timezone": "UTC",
+  "language": "en",
+  "themes": [
+    {
+      "id": "conflict-security",
+      "label": "Conflict & Security",
+      "hint": "Armed violence and the threat of it: battlefield developments, strikes and casualties, ceasefires and hostage talks, insurgency and terrorism, arms transfers, and military posturing between states."
+    },
+    {
+      "id": "diplomacy",
+      "label": "Diplomacy & Institutions",
+      "hint": "States negotiating rather than fighting: summits and state visits, treaties, sanctions and their relief, UN, NATO, EU and G20 proceedings, international court cases, and ambassadorial or recognition disputes."
+    },
+    {
+      "id": "politics-elections",
+      "label": "Domestic Politics",
+      "hint": "Power inside one country: elections and results, coalition formation and no confidence votes, protests and crackdowns, coups, corruption scandals and leadership changes. The story stops at the border."
+    },
+    {
+      "id": "economy-trade",
+      "label": "Economy & Trade",
+      "hint": "Cross border economics: tariffs and trade deals, central bank decisions and currency crises, energy and commodity prices, debt restructuring and IMF programmes, supply chains and multinational operations."
+    },
+    {
+      "id": "disasters-health",
+      "label": "Disasters & Health",
+      "hint": "Sudden harm from nature or systems failure: earthquakes, floods, storms and wildfires, famine and displacement, outbreaks and public health emergencies, industrial and transport accidents, and the relief response."
+    },
+    {
+      "id": "society-rights",
+      "label": "Society & Rights",
+      "hint": "People and norms rather than states: migration and asylum, press freedom and censorship, religious and ethnic tension, gender and labour rights, courts ruling on civil liberties, and cultural flashpoints."
+    }
+  ],
+  "keywords": {
+    "include": ["United Nations", "election", "ceasefire", "sanctions", "summit", "protest", "tariff"],
+    "exclude": ["horoscope", "celebrity gossip", "recipe", "transfer rumour"],
+    "boost": ["breaking", "killed", "resigns", "agreement", "emergency", "evacuation", "vote"]
+  },
+  "config": {"lookback_hours": 12, "digest_bullets": 7},
+  "sources": [
+    {"kind": "rss", "name": "BBC News - World", "url": "https://feeds.bbci.co.uk/news/world/rss.xml", "weight": 1.3, "config": {}},
+    {"kind": "rss", "name": "Al Jazeera - All News", "url": "https://www.aljazeera.com/xml/rss/all.xml", "weight": 1.1, "config": {}},
+    {"kind": "rss", "name": "The Guardian - World", "url": "https://www.theguardian.com/world/rss", "weight": 1.2, "config": {}},
+    {"kind": "rss", "name": "NPR - World", "url": "https://feeds.npr.org/1004/rss.xml", "weight": 1.0, "config": {}},
+    {"kind": "rss", "name": "Deutsche Welle - World", "url": "https://rss.dw.com/rdf/rss-en-world", "weight": 1.0, "config": {}},
+    {"kind": "rss", "name": "France 24 - International", "url": "https://www.france24.com/en/rss", "weight": 0.9, "config": {}},
+    {"kind": "rss", "name": "CNA - Latest", "url": "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml", "weight": 0.9, "config": {}},
+    {"kind": "googlenews", "name": "Google News - Reuters wire", "url": "https://news.google.com/rss/search?q=site:reuters.com+when:1d&hl=en-US&gl=US&ceid=US:en", "weight": 1.0, "config": {"query": "site:reuters.com when:1d", "hl": "en-US", "gl": "US", "ceid": "US:en"}},
+    {"kind": "googlenews", "name": "Google News - Associated Press wire", "url": "https://news.google.com/rss/search?q=site:apnews.com+when:1d&hl=en-US&gl=US&ceid=US:en", "weight": 1.0, "config": {"query": "site:apnews.com when:1d", "hl": "en-US", "gl": "US", "ceid": "US:en"}}
+  ]
+}

@@ -1,0 +1,62 @@
+{
+  "slug": "india-policy",
+  "name": "India Policy & Governance",
+  "description": "For public affairs teams, researchers and policy reporters following what the Union government announces and what Parliament does with it. Anchored on PIB primary releases with national newsroom coverage around them.",
+  "timezone": "Asia/Kolkata",
+  "language": "en",
+  "themes": [
+    {
+      "id": "parliament",
+      "label": "Parliament & Legislation",
+      "hint": "Business of the two Houses: bills introduced, passed or referred to committee, ordinances, standing and select committee reports, questions and answers, session scheduling and disruptions."
+    },
+    {
+      "id": "executive-action",
+      "label": "Cabinet & Ministries",
+      "hint": "Decisions taken by the executive: Cabinet and CCEA approvals, scheme launches and outlays, ministry notifications, appointments, MoUs and inter-ministerial orders. Typically sourced from a PIB release."
+    },
+    {
+      "id": "economy-fiscal",
+      "label": "Economy & Fiscal Policy",
+      "hint": "Budget and taxation, GST Council, subsidies and procurement prices, disinvestment, fiscal deficit and borrowing, trade and tariff policy, and official economic data releases by MoSPI or the ministries."
+    },
+    {
+      "id": "federalism",
+      "label": "States & Federalism",
+      "hint": "The Union and state relationship: Centre to state transfers and Finance Commission awards, governor and assembly disputes, state elections that change national policy, Article 356 and territorial or boundary questions."
+    },
+    {
+      "id": "social-welfare",
+      "label": "Welfare & Social Policy",
+      "hint": "Delivery and design of health, education, food security, rural employment, pensions, caste and reservation policy, and the census and survey data used to target them. The subject is a population, not a market."
+    },
+    {
+      "id": "security-foreign",
+      "label": "Security & Foreign Policy",
+      "hint": "Defence procurement and posture, internal security and border incidents, treaties, state visits, trade negotiations and India's position at multilateral bodies. Includes MEA statements."
+    },
+    {
+      "id": "institutions",
+      "label": "Institutions & Accountability",
+      "hint": "The machinery of the state under scrutiny: CAG and CIC reports, Election Commission decisions, RTI and transparency, civil service reform, corruption findings and constitutional body appointments."
+    }
+  ],
+  "keywords": {
+    "include": ["Cabinet", "ministry", "Parliament", "bill", "scheme", "PIB", "notification", "policy", "Niti Aayog"],
+    "exclude": ["horoscope", "box office", "IPL", "recipe"],
+    "boost": ["approved", "tabled", "gazette", "allocation", "committee report", "ordinance", "consultation"]
+  },
+  "config": {"lookback_hours": 24, "digest_bullets": 6},
+  "sources": [
+    {"kind": "rss", "name": "PIB - Press Releases", "url": "https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=3", "weight": 1.5, "config": {}},
+    {"kind": "rss", "name": "PIB - Features & Backgrounders", "url": "https://pib.gov.in/RssMain.aspx?ModId=8&Lang=1&Regid=3", "weight": 1.2, "config": {}},
+    {"kind": "rss", "name": "The Hindu - National", "url": "https://www.thehindu.com/news/national/feeder/default.rss", "weight": 1.1, "config": {}},
+    {"kind": "rss", "name": "Indian Express - India", "url": "https://indianexpress.com/section/india/feed/", "weight": 1.0, "config": {}},
+    {"kind": "rss", "name": "Indian Express - Political Pulse", "url": "https://indianexpress.com/section/political-pulse/feed/", "weight": 1.0, "config": {}},
+    {"kind": "rss", "name": "Indian Express - Explained", "url": "https://indianexpress.com/section/explained/feed/", "weight": 0.9, "config": {}},
+    {"kind": "rss", "name": "Economic Times - Economy & Policy", "url": "https://economictimes.indiatimes.com/news/economy/policy/rssfeeds/1373380680.cms", "weight": 1.0, "config": {}},
+    {"kind": "rss", "name": "ThePrint - Governance", "url": "https://theprint.in/category/governance/feed/", "weight": 0.9, "config": {}},
+    {"kind": "rss", "name": "Scroll.in - Latest", "url": "https://feeds.feedburner.com/ScrollinArticles.rss", "weight": 0.8, "config": {}},
+    {"kind": "googlenews", "name": "Google News - Legislative research & bills", "url": "https://news.google.com/rss/search?q=%22PRS+Legislative+Research%22+OR+%22Parliament+bill%22+India+when:7d&hl=en-IN&gl=IN&ceid=IN:en", "weight": 0.8, "config": {"query": "\"PRS Legislative Research\" OR \"Parliament bill\" India when:7d", "hl": "en-IN", "gl": "IN", "ceid": "IN:en"}}
+  ]
+}

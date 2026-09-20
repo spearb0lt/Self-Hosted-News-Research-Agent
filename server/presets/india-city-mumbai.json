@@ -1,0 +1,56 @@
+{
+  "slug": "india-city-mumbai",
+  "name": "Mumbai City Desk",
+  "description": "A worked example of a city beat: everything a Mumbai resident, city reporter or local policy watcher needs in one place, from BMC decisions and rail disruptions to neighbourhood chatter. Copy it and swap the sources to build another city.",
+  "timezone": "Asia/Kolkata",
+  "language": "en",
+  "themes": [
+    {
+      "id": "civic-infrastructure",
+      "label": "Civic & Infrastructure",
+      "hint": "The physical city and the body that runs it: BMC and MMRDA works, water supply and sewage, potholes and road resurfacing, drainage and monsoon flooding, waste, power and telecom outages, building collapses and repairs."
+    },
+    {
+      "id": "policy",
+      "label": "Civic Policy & Politics",
+      "hint": "Decisions rather than works: municipal budget and property tax, BMC elections and corporator politics, development plan and FSI rules, MPCB and coastal zone clearances, state government orders aimed at the city."
+    },
+    {
+      "id": "crime-safety",
+      "label": "Crime & Safety",
+      "hint": "Police and court matters inside the city: arrests, FIRs, fraud and cyber crime cases, communal or public order incidents, fires and accidents, and disaster response. One incident with named parties and a police station."
+    },
+    {
+      "id": "transport",
+      "label": "Transport & Mobility",
+      "hint": "Moving through the city: local trains and Western, Central and Harbour line disruptions, Metro line openings and works, BEST buses, monorail, coastal road and sea link, traffic and parking rules, airport and port operations."
+    },
+    {
+      "id": "events",
+      "label": "Culture & Events",
+      "hint": "What is happening in the city and when: festivals and immersion arrangements, sport fixtures, concerts, film and theatre, food and nightlife openings, museum and gallery programming, weekend listings."
+    },
+    {
+      "id": "real-estate",
+      "label": "Real Estate & Housing",
+      "hint": "Property as an asset and as shelter: land and flat transactions and price trends, redevelopment and SRA schemes, MHADA lotteries, RERA complaints, slum policy, rental market and eviction disputes."
+    }
+  ],
+  "keywords": {
+    "include": ["Mumbai", "BMC", "MMRDA", "MHADA", "local train", "Metro", "Thane", "Navi Mumbai", "BEST"],
+    "exclude": ["horoscope", "box office collection"],
+    "boost": ["civic body", "waterlogging", "redevelopment", "megablock", "tender", "ward", "coastal road"]
+  },
+  "config": {"lookback_hours": 24, "digest_bullets": 5},
+  "sources": [
+    {"kind": "rss", "name": "Mid-Day - Mumbai", "url": "https://www.mid-day.com/Resources/midday/rss/mumbai.xml", "weight": 1.2, "config": {}},
+    {"kind": "rss", "name": "Mid-Day - Mumbai Crime", "url": "https://www.mid-day.com/Resources/midday/rss/mumbai-crime-news.xml", "weight": 1.0, "config": {}},
+    {"kind": "rss", "name": "Hindustan Times - Mumbai", "url": "https://www.hindustantimes.com/feeds/rss/cities/mumbai-news/rssfeed.xml", "weight": 1.2, "config": {}},
+    {"kind": "rss", "name": "Free Press Journal - Latest", "url": "https://www.freepressjournal.in/stories.rss", "weight": 1.0, "config": {}},
+    {"kind": "rss", "name": "Indian Express - Mumbai", "url": "https://indianexpress.com/section/cities/mumbai/feed/", "weight": 1.1, "config": {}},
+    {"kind": "rss", "name": "Times of India - Mumbai", "url": "https://timesofindia.indiatimes.com/rssfeeds/-2128838597.cms", "weight": 1.0, "config": {}},
+    {"kind": "rss", "name": "The Hindu - Mumbai", "url": "https://www.thehindu.com/news/cities/mumbai/feeder/default.rss", "weight": 1.0, "config": {}},
+    {"kind": "reddit", "name": "Reddit - r/mumbai", "url": "https://www.reddit.com/r/mumbai/", "weight": 0.6, "config": {"subreddit": "mumbai", "sort": "hot"}},
+    {"kind": "googlenews", "name": "Google News - Mumbai civic", "url": "https://news.google.com/rss/search?q=Mumbai+(BMC+OR+civic+OR+municipal+OR+infrastructure)+when:2d&hl=en-IN&gl=IN&ceid=IN:en", "weight": 0.8, "config": {"query": "Mumbai (BMC OR civic OR municipal OR infrastructure) when:2d", "hl": "en-IN", "gl": "IN", "ceid": "IN:en"}}
+  ]
+}

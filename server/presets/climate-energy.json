@@ -1,0 +1,61 @@
+{
+  "slug": "climate-energy",
+  "name": "Climate & Energy",
+  "description": "For climate analysts, energy investors and sustainability teams tracking the transition end to end, from emissions science to grid build out. Global coverage with a deliberate India lens on renewables and policy.",
+  "timezone": "UTC",
+  "language": "en",
+  "themes": [
+    {
+      "id": "climate-science",
+      "label": "Climate Science & Impacts",
+      "hint": "Measured or modelled physical change: temperature and emissions records, attribution studies, IPCC and journal findings, ice, ocean and forest data, and extreme weather framed as a climate event with damages."
+    },
+    {
+      "id": "policy-diplomacy",
+      "label": "Policy & Diplomacy",
+      "hint": "Rules and pledges: COP and UNFCCC negotiations, NDCs, carbon pricing and border adjustment, subsidies and tax credits, permitting reform, disclosure mandates, and litigation against governments or majors."
+    },
+    {
+      "id": "renewables",
+      "label": "Renewables & Storage",
+      "hint": "Building clean supply: solar, wind, hydro, nuclear and geothermal projects, auctions and tariffs, batteries and long duration storage, manufacturing capacity, and module or cell price moves."
+    },
+    {
+      "id": "fossil-transition",
+      "label": "Fossil Fuels & Transition",
+      "hint": "The incumbent system winding down or defending itself: oil, gas, coal and LNG supply, refinery and pipeline decisions, plant retirements and stranded assets, methane leaks, and majors' capex shifting or not shifting."
+    },
+    {
+      "id": "grid-demand",
+      "label": "Grid & Demand",
+      "hint": "Delivery and consumption rather than generation: transmission and interconnection queues, grid reliability and blackouts, data centre and industrial load growth, EV charging, heat pumps, efficiency and demand response."
+    },
+    {
+      "id": "finance-markets",
+      "label": "Climate Finance & Carbon Markets",
+      "hint": "Money moving: green bonds and transition finance, climate funds and loss and damage pledges, insurance repricing, carbon credit quality disputes and offset registries, and cleantech investment or bankruptcy."
+    },
+    {
+      "id": "india-energy",
+      "label": "India Energy",
+      "hint": "The Indian market specifically: MNRE and CEA decisions, SECI and state auctions, discom finances and PPAs, coal and captive power, rooftop and open access rules, and domestic manufacturing incentives such as PLI and ALMM."
+    }
+  ],
+  "keywords": {
+    "include": ["emissions", "renewable", "grid", "solar", "battery", "COP", "net zero", "coal", "carbon"],
+    "exclude": ["horoscope", "celebrity", "recipe"],
+    "boost": ["auction", "record", "phase out", "target", "curtailment", "tariff", "capacity addition"]
+  },
+  "config": {"lookback_hours": 48, "digest_bullets": 5},
+  "sources": [
+    {"kind": "rss", "name": "Carbon Brief - All", "url": "https://www.carbonbrief.org/feed/", "weight": 1.3, "config": {}},
+    {"kind": "rss", "name": "Inside Climate News", "url": "https://insideclimatenews.org/feed/", "weight": 1.2, "config": {}},
+    {"kind": "rss", "name": "Yale Environment 360", "url": "https://e360.yale.edu/feed.xml", "weight": 1.0, "config": {}},
+    {"kind": "rss", "name": "Canary Media", "url": "https://www.canarymedia.com/feed", "weight": 1.1, "config": {}},
+    {"kind": "rss", "name": "Utility Dive - News", "url": "https://www.utilitydive.com/feeds/news/", "weight": 1.0, "config": {}},
+    {"kind": "rss", "name": "Grist", "url": "https://grist.org/feed/", "weight": 0.9, "config": {}},
+    {"kind": "rss", "name": "Mercom India - Solar", "url": "https://www.mercomindia.com/feed", "weight": 1.2, "config": {}},
+    {"kind": "rss", "name": "ET EnergyWorld - Top Stories", "url": "https://energy.economictimes.indiatimes.com/rss/topstories", "weight": 1.1, "config": {}},
+    {"kind": "rss", "name": "Mongabay India - Environment", "url": "https://india.mongabay.com/feed/", "weight": 1.0, "config": {}}
+  ]
+}

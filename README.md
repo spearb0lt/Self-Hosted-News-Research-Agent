@@ -1,0 +1,386 @@
+# Newsroom
+
+A news aggregator that reads your sources so you do not have to open twelve
+tabs. It pulls from RSS, sitemaps, aggregators and APIs, works out which
+stories are the same story, groups what is left into events, and writes a short
+daily digest with the links attached.
+
+It runs with **no API keys at all**. Deduplication uses a 23 MB sentence
+encoder bundled into the deployment, not a hosted service. Adding one LLM key
+upgrades the digest from headlines to written summaries.
+
+---
+
+## Contents
+
+- [What it actually does](#what-it-actually-does)
+- [Quick start](#quick-start)
+- [Deploying](#deploying)
+- [How deduplication works](#how-deduplication-works)
+- [Sources](#sources)
+- [Providers](#providers)
+- [Configuration](#configuration)
+- [Command line](#command-line)
+- [Tuning and evaluation](#tuning-and-evaluation)
+- [Architecture](#architecture)
+- [Known limits](#known-limits)
+
+---
+
+## What it actually does
+
+The pipeline has nine stages. Each one is bounded and resumable, which is what
+lets the whole thing run inside a 300 second serverless function as well as on
+a machine with no time limit.
+
+```
+ingest    read every configured source, respecting robots.txt and rate limits
+extract   fetch each article's full text, because feed summaries are thin
+embed     turn each article into a vector
+dedup     drop articles that are the same story as one already held
+cluster   group the survivors into events, one event per real world happening
+classify  assign each event a theme from this workspace's own taxonomy
+summarise write two factual sentences per event from its coverage
+digest    assemble the bullets, Markdown, HTML and JSON
+enrich    entities, sentiment and stance (optional, runs last on purpose)
+```
+
+A **workspace** is one beat: its own sources, its own theme taxonomy, its own
+schedule. Eight presets ship ready to use, every feed in them verified live.
+
+---
+
+## Quick start
+
+Requires Python 3.12 and Node 20 or newer.
+
+```bash
+git clone <your-repo> newsroom && cd newsroom
+
+python -m venv .venv
+.venv/bin/activate            # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+python scripts/fetch_model.py # 23 MB, the local encoder
+
+npm install
+cp .env.example .env          # optional, it runs without one
+```
+
+Two terminals:
+
+```bash
+uvicorn server.main:app --reload --port 8000   # backend
+npm run dev                                    # frontend on :3000
+```
+
+Open <http://localhost:3000>, pick a preset, press **Run now**.
+
+Or skip the browser entirely:
+
+```bash
+python -m server.ops.cli create global-tech
+python -m server.ops.cli run global-tech
+python -m server.ops.cli digest global-tech
+```
+
+Check what your machine can do at any point:
+
+```bash
+python -m server.ops.cli doctor
+```
+
+---
+
+## Deploying
+
+### Vercel
+
+One project serves both halves: Next.js from the repo root, FastAPI from
+`api/index.py`.
+
+1. Create a free Postgres database. Vercel's marketplace offers Neon and
+   Supabase; either free tier is ample. **The filesystem on Vercel is
+   ephemeral, so a database URL is not optional there.**
+2. Import the repository. Vercel detects Next.js and the Python function on its
+   own; `vercel.json` is already configured.
+3. Set environment variables: `DATABASE_URL`, `CRON_SECRET` (any long random
+   string), and whichever provider keys you have.
+4. Add a build step so the local encoder ships with the function. In project
+   settings set the install command to:
+   ```
+   pip install -r requirements.txt && python scripts/fetch_model.py --quiet && npm install
+   ```
+
+The bundle comes to roughly 310 MB against Vercel's 500 MB Python limit.
+
+**One thing to know about the free plan:** Hobby accounts allow cron jobs only
+**once per day**, and a deployment fails to build if `vercel.json` asks for more.
+A run that pauses at the 300 second limit therefore needs something to continue
+it. `.github/workflows/scheduler.yml` does this for free: it starts the daily
+run and pokes `/api/cron/tick` every fifteen minutes, which is a no-op when
+nothing is waiting. Add `APP_URL` and `CRON_SECRET` as repository secrets and it
+works. On Vercel Pro you can delete that workflow and schedule both in
+`vercel.json` directly.
+
+### Docker, Oracle Cloud, Render, any VM
+
+The container is the full featured target. Everything Vercel cannot do,
+headless browser rendering, the PyTorch encoder, unbounded crawls, an in
+process scheduler, switches on automatically because the runtime detects a
+server tier.
+
+```bash
+docker compose up -d                    # app plus Postgres
+docker compose --profile local-ai up -d # also Ollama, for a zero key setup
+```
+
+Oracle's Always Free ARM instance (2 OCPU, 12 GB as of 2026) runs this
+comfortably. Install Docker, clone, `docker compose up -d`, and add a crontab
+entry:
+
+```cron
+0 1 * * * cd /opt/newsroom && docker compose run --rm cron
+```
+
+`render.yaml` is a working blueprint for Render. Note that Render's free tier
+spins down after 15 minutes of inactivity and offers no cron at all, so use the
+GitHub Actions workflow there too.
+
+---
+
+## How deduplication works
+
+This is the part worth understanding, because it is where the project earns its
+keep and where the interesting failure lives.
+
+Four layers run in increasing order of cost:
+
+1. **Canonical URL.** Tracking parameters, AMP suffixes, `www.`, `m.` and
+   fragments are stripped before hashing, so `example.com/story?utm_source=x`
+   and `www.example.com/story/` are one article, not two.
+2. **Content hash.** Catches a byte identical reprint.
+3. **SimHash.** A 64 bit locality sensitive fingerprint over word trigrams.
+   Catches syndicated wire copy each outlet lightly reworded. No model involved.
+4. **Embedding cosine.** Catches independent reporting of the same event.
+
+### The contradiction guard
+
+Layer 4 has a measured weakness that a threshold alone cannot fix. On the
+bundled encoder:
+
+| pair | cosine |
+| --- | --- |
+| same event, two outlets | 0.76 |
+| **opposite** event, same subject ("RBI holds" vs "RBI cuts") | **0.69** |
+| unrelated | 0.12 |
+
+Seven hundredths is not a safe margin. Set the threshold low enough to catch
+real duplicates and you will eventually merge a rate hold with a rate cut and
+write one summary asserting both.
+
+So before any merge, the two texts are checked for disagreement:
+
+- **Mutually exclusive outcomes.** Eight families of verbs and adjectives:
+  hold/cut/hike, approve/reject, win/lose, rise/fall, acquit/convict,
+  resign/appoint, launch/halt, profit/loss. A pair picking different sides of
+  one family is never merged, whatever the cosine says.
+- **Disagreeing headline figures.** Percentages, basis points and amounts. A 12
+  percent profit rise and a 30 percent profit rise are different stories.
+- **Headline word overlap.** A high cosine with almost no shared headline words
+  is the encoder being generous about topic, not evidence of one event.
+
+On the shipped eval set this takes precision from 0.83 to 1.00, and the report
+names every merge the guard prevented.
+
+### Thresholds are per backend, not global
+
+A sentence encoder and the lexical fallback produce completely different
+similarity scales. A true duplicate pair scores about 0.76 on the ONNX model and
+about 0.43 on the lexical fallback. Each backend therefore declares its own
+cuts, and `DUPLICATE_THRESHOLD` / `CLUSTER_THRESHOLD` in the environment
+override **all** of them with one number, which is almost never what you want.
+Leave them unset unless you have run the eval.
+
+---
+
+## Sources
+
+Eighteen source kinds. All work with no key except where noted.
+
+| Kind | What it reads |
+| --- | --- |
+| `rss` | Any RSS, Atom or RDF feed. Sends conditional requests, so a feed that has not changed costs nothing |
+| `sitemap` | `sitemap.xml`, sitemap indexes, Google News sitemaps |
+| `html` | Any section or homepage, with article links scored and extracted |
+| `googlenews` | Google News RSS search and topic feeds |
+| `hackernews` | The official Firebase API, no rate limit |
+| `youtube` | Channel and playlist feeds |
+| `search` | SerpAPI, Brave, Tavily, Exa, or self-hosted SearXNG |
+| `reddit` | Needs OAuth credentials (see below) |
+| `browser` | Playwright rendering for JavaScript-heavy sites. Server tier only |
+| `newsapi` `gnews` `newsdata` `currents` `mediastack` `guardian` `nyt` `marketaux` `finnhub` | Each needs its own key |
+
+Paste any website URL into the **sources** page and it will find that site's
+feeds for you, from `<link rel="alternate">` tags and by probing common paths.
+
+**Reddit changed in 2026.** The unauthenticated `.json` endpoints now return
+403, so a script-type OAuth app at <https://www.reddit.com/prefs/apps> is
+required. Set `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET` and a properly
+formatted `REDDIT_USER_AGENT`.
+
+### Politeness
+
+Every outbound request goes through one client that observes a per-host delay
+and any declared crawl delay, sends conditional requests (a feed that has not
+changed returns 304 and costs nothing), and caps response size.
+
+`robots.txt` is enforced where it applies: the `html` and `browser` crawlers,
+and full-text article extraction. It is **not** applied to feeds, sitemaps and
+documented JSON APIs. That is deliberate. `robots.txt` governs a crawler
+discovering content it was not pointed at; a feed is published expressly for
+machines and was configured by the person running the app, no feed reader
+consults `robots.txt` before fetching a subscription, and enforcing it there
+breaks official APIs. `export.arxiv.org` disallows the exact path its own
+documented API lives on, so a strict reading silently killed three arXiv
+sources until this distinction was drawn.
+
+`RESPECT_ROBOTS=0` disables the remaining checks too. Only use it for sites you
+have permission to read.
+
+Some publishers block automated clients outright. Those sources report the
+error and disable themselves after eight consecutive failures rather than
+burning part of every run's time budget forever.
+
+---
+
+## Providers
+
+Nineteen LLM providers and eleven embedding backends, all interchangeable at
+runtime.
+
+**LLM:** Gemini, Groq, Cloudflare Workers AI, OpenRouter, Cerebras, SambaNova,
+Mistral, DeepSeek, Together, Fireworks, Anthropic, OpenAI, xAI, Perplexity,
+Hugging Face, plus Ollama, LM Studio, llama.cpp and vLLM running on your own
+machine.
+
+**Embeddings:** the bundled ONNX MiniLM, Gemini, Cloudflare, Jina, Voyage,
+OpenAI, Cohere, sentence-transformers, Ollama, Hugging Face, and a
+dependency-free lexical fallback.
+
+Selection is automatic: the best available backend wins, which on a fresh
+install with no keys is the bundled model. `EMBEDDING_PROVIDER` pins one.
+
+### Bring your own key
+
+Visitors can paste their own keys in the browser. Keys are held in
+`localStorage`, sent as `X-LLM-Key-<provider>` headers with that visitor's
+requests only, and never written to disk, logged or shared. That is what makes
+it safe to host this publicly without paying for everyone's inference. Set
+`ALLOW_CLIENT_KEYS=0` for a private instance.
+
+Cloudflare needs **both** a token and an account id, because the account id is
+part of the request URL.
+
+---
+
+## Configuration
+
+Everything is environment variables; see `.env.example`, which is annotated.
+Nothing is required. A missing key means the matching provider or source
+reports itself unavailable with a reason, and the app carries on.
+
+The settings page shows a live capability panel explaining exactly what this
+particular deployment cannot do and why, which is the fastest way to understand
+a restriction.
+
+---
+
+## Command line
+
+```bash
+python -m server.ops.cli doctor            # capabilities, providers, source health
+python -m server.ops.cli presets           # what beats are available
+python -m server.ops.cli create india-markets
+python -m server.ops.cli run india-markets
+python -m server.ops.cli run-all           # what the cron container runs
+python -m server.ops.cli tick              # continue a paused run
+python -m server.ops.cli digest india-markets --deliver email --to me@example.com
+```
+
+---
+
+## Tuning and evaluation
+
+```bash
+python -m server.ops.eval           # score the built in labelled set
+python -m server.ops.eval --sweep   # every threshold from 0.20 to 0.98
+```
+
+The twelve shipped cases are deliberately adversarial; most are pairs that any
+embedding model scores highly and only the guard separates.
+
+A set shipped in a repository can only be a sanity check. To tune against your
+own beat:
+
+```bash
+python -m server.ops.eval --workspace india-markets --sample 40 --out pairs.json
+# set "same_event" to true or false on each pair
+python -m server.ops.eval --labelled pairs.json
+```
+
+It exports the genuinely borderline pairs, the ones near the current cut, since
+those are the only ones whose labels change anything.
+
+---
+
+## Architecture
+
+```
+server/
+  runtime.py      detects serverless vs server, exposes a capability matrix
+  settings.py     every environment variable
+  util.py         URL canonicalisation, SimHash, time parsing
+  db/             one schema over SQLite and Postgres
+  llm/            19 providers, per-request keyring, strict routing
+  embeddings/     11 backends, per-backend thresholds, similarity
+  ingest/         18 source adapters, one polite HTTP client
+  pipeline/       the nine stages and the resumable runner
+  delivery/       email, Slack, Discord, Telegram, webhooks, RSS out
+  rag/            semantic search and grounded question answering
+  ops/            cost meter, CLI, evaluation
+  presets/        eight ready-made beats
+api/index.py      Vercel entrypoint
+app/ components/ lib/   Next.js frontend
+```
+
+`runtime.py` is the keystone. Rather than fork the code for serverless, every
+module asks it for permission, and a feature that cannot run reports itself
+unavailable with a reason the UI shows. Adding a hosting target means teaching
+`detect()` about it, not editing the pipeline.
+
+The database stores every timestamp as ISO 8601 UTC text and writes queries
+with `?` placeholders, rewritten for Postgres. That keeps one data layer honest
+across both engines.
+
+---
+
+## Known limits
+
+- **Summaries are machine written.** Every digest entry carries its source
+  links, and the prompts forbid asserting anything not in the supplied text,
+  but follow the links before relying on one.
+- **Clustering splits developing stories sometimes.** Coverage arriving hours
+  apart with different framing can land just under the threshold and become two
+  events. Lowering `CLUSTER_THRESHOLD` fixes it and costs precision; measure
+  with the eval before changing it.
+- **The contradiction guard is English and rule based.** It covers the outcome
+  vocabulary that matters most in finance, law and politics. It will not catch
+  a contradiction phrased in a way it has no word for.
+- **Free tiers are small.** NewsAPI allows 100 requests a day and is
+  localhost-only; GNews gives 10 articles per request with a 12 hour delay;
+  Mediastack allows 100 requests a *month*. The keyless sources (RSS, sitemaps,
+  Google News, Hacker News) carry the project and have no such limits.
+- **Some publishers block automated clients.** Reuters and AP no longer
+  publish usable public feeds at all; the presets reach them through Google
+  News queries instead.
+- **Vercel Hobby crons run once a day.** See the deployment section.
