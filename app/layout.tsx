@@ -5,10 +5,15 @@ import { ConfigProvider } from "@/components/ConfigProvider";
 import { SiteHeader } from "@/components/SiteHeader";
 import { THEME_BOOTSTRAP } from "@/components/ThemeToggle";
 
+// The header reads the name from the API, which reads APP_NAME. The tab title
+// is rendered before that call returns, so it reads the same variable directly
+// rather than showing a second, different name for the same deployment.
+const APP_NAME = process.env.APP_NAME || "Newsroom";
+
 export const metadata: Metadata = {
   title: {
-    default: "News Research",
-    template: "%s | News Research",
+    default: APP_NAME,
+    template: `%s | ${APP_NAME}`,
   },
   description:
     "Collect the news you care about, group it into events, and read a short daily digest you can ask questions of.",

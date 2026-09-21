@@ -22,7 +22,7 @@ function isActive(pathname: string, href: string): boolean {
 export function SiteHeader() {
   const pathname = usePathname() ?? "/";
   const { config } = useConfig();
-  const appName = config?.app.name || "News Research";
+  const appName = config?.app.name || "Newsroom";
 
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-surface/85 backdrop-blur">
