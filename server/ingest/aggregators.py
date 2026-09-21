@@ -533,10 +533,17 @@ class RedditAdapter(SourceAdapter):
 # ------------------------------------------------------------------- YouTube
 
 YOUTUBE_FEED = "https://www.youtube.com/feeds/videos.xml"
+# Order matters. A channel page names every channel it features, so the first
+# "channelId" on the page belongs to a recommendation, not to the channel being
+# viewed: resolving @Computerphile that way returns Numberphile's feed. The
+# markers below are the ones a page carries exactly once for itself, most
+# specific first, and the ambiguous one is kept only as a last resort.
 _CHANNEL_ID_MARKERS = (
-    r'"channelId"\s*:\s*"(UC[0-9A-Za-z_-]{20,})"',
+    r'feeds/videos\.xml\?channel_id=(UC[0-9A-Za-z_-]{20,})',
+    r'rel="canonical"[^>]*href="https://www\.youtube\.com/channel/(UC[0-9A-Za-z_-]{20,})"',
     r'"externalId"\s*:\s*"(UC[0-9A-Za-z_-]{20,})"',
     r'channel/(UC[0-9A-Za-z_-]{20,})',
+    r'"channelId"\s*:\s*"(UC[0-9A-Za-z_-]{20,})"',
 )
 
 
@@ -545,6 +552,22 @@ class YouTubeAdapter(SourceAdapter):
     kind = "youtube"
     label = "YouTube channel"
     url_hint = "A channel URL, an @handle, or a playlist URL. No API key needed"
+
+    @classmethod
+    def validate_url(cls, url: str) -> str:
+        candidate = (url or "").strip()
+        if cls._bare_identifier(candidate):
+            return ""
+        return super().validate_url(candidate)
+
+    @staticmethod
+    def _bare_identifier(value: str) -> str:
+        """The channel page for an @handle or a UC id typed on its own."""
+        if value.startswith("@") and len(value) > 1 and "/" not in value:
+            return f"https://www.youtube.com/{value}"
+        if value.startswith("UC") and len(value) == 24 and "/" not in value:
+            return f"https://www.youtube.com/channel/{value}"
+        return ""
 
     def fetch(
         self,
@@ -622,6 +645,9 @@ class YouTubeAdapter(SourceAdapter):
             )
         if "feeds/videos.xml" in target:
             return target
+        # The hint offers a bare @handle or channel id, so honour it rather
+        # than fetching the handle as though it were an address.
+        target = self._bare_identifier(target) or target
 
         parts = urlsplit(target)
         segments = [segment for segment in (parts.path or "").split("/") if segment]

@@ -238,16 +238,19 @@ class HttpClient:
     ) -> Response:
         import requests
 
-        if self.respect_robots and not allow_robots_override:
-            if not _robots.allows(url, self.user_agent):
-                raise SourceError(
-                    f"robots.txt at {host_of(url)} disallows this path.",
-                    retryable=False,
-                    hint=(
-                        "Set RESPECT_ROBOTS=0 only if you have permission from the "
-                        "site owner. The site's own RSS feed is usually allowed."
-                    ),
-                )
+        if (
+            self.respect_robots
+            and not allow_robots_override
+            and not _robots.allows(url, self.user_agent)
+        ):
+            raise SourceError(
+                f"robots.txt at {host_of(url)} disallows this path.",
+                retryable=False,
+                hint=(
+                    "Set RESPECT_ROBOTS=0 only if you have permission from the "
+                    "site owner. The site's own RSS feed is usually allowed."
+                ),
+            )
 
         request_headers = {
             "User-Agent": self.user_agent,
@@ -402,6 +405,22 @@ class SourceAdapter:
 
     def __init__(self, client: HttpClient | None = None) -> None:
         self.client = client or HttpClient()
+
+    @classmethod
+    def validate_url(cls, url: str) -> str:
+        """Why this value is not usable as this kind's `url`, or "" if it is.
+
+        Checked when a source is created, because the alternative is storing
+        the typo and reporting it once a day as a fetch failure, which reads
+        like the site is down rather than like the address is wrong.
+        """
+        candidate = (url or "").strip()
+        if not candidate:
+            return "" if cls.urlless else "A URL is required."
+        parsed = urlsplit(candidate)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            return "That is not a web address. It needs to start with http:// or https://."
+        return ""
 
     def is_available(self) -> tuple[bool, str]:
         """Whether this adapter can run here, and why not when it cannot."""

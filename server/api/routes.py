@@ -314,6 +314,9 @@ def post_source(slug: str, body: SourceCreate) -> dict[str, Any]:
         raise fail(400, f"Unknown source kind '{body.kind}'.")
     if not body.url and not adapter_cls.urlless:
         raise fail(400, f"A {body.kind} source needs a URL.", hint=adapter_cls.url_hint)
+    problem = adapter_cls.validate_url(body.url)
+    if problem:
+        raise fail(400, problem, hint=adapter_cls.url_hint)
 
     source = repo.add_source(
         int(workspace["id"]),
@@ -330,8 +333,16 @@ def post_source(slug: str, body: SourceCreate) -> dict[str, Any]:
 
 @router.patch("/sources/{source_id}")
 def patch_source(source_id: int, body: SourceUpdate) -> dict[str, Any]:
-    if repo.get_source(source_id) is None:
+    from ..ingest import adapter_for
+
+    existing = repo.get_source(source_id)
+    if existing is None:
         raise fail(404, f"No source {source_id}.")
+    adapter_cls = adapter_for(str(existing.get("kind") or ""))
+    if body.url is not None and adapter_cls is not None:
+        problem = adapter_cls.validate_url(body.url)
+        if problem:
+            raise fail(400, problem, hint=adapter_cls.url_hint)
     updated = repo.update_source(
         source_id, **{k: v for k, v in body.model_dump().items() if v is not None}
     )
