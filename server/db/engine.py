@@ -125,14 +125,38 @@ class Database:
     # ------------------------------------------------------------ connections
 
     def _normalised_pg_url(self) -> str:
+        """The connection string, with a sensible TLS mode when none is given.
+
+        Neon and Supabase require TLS and do not always say so in the URL they
+        hand out, so a managed host gets sslmode=require. Forcing it on every
+        host was wrong: a Postgres in Docker or on a VM usually has no
+        certificate, and `require` fails outright with "server does not support
+        SSL" rather than falling back.
+
+        A hostname with no dot in it cannot be a public host. It is a container
+        or service name, like the `db` in this project's own compose file, or
+        localhost. Those get libpq's `prefer`, which uses TLS when the server
+        offers it and connects anyway when it does not.
+        """
         url = self.url
         if url.startswith("postgres://"):
             url = "postgresql://" + url[len("postgres://") :]
-        # Neon and Supabase both require TLS and neither always says so in the
-        # URL they hand out.
-        if "sslmode=" not in url:
-            url += ("&" if "?" in url else "?") + "sslmode=require"
-        return url
+        if "sslmode=" in url:
+            return url
+
+        from urllib.parse import urlsplit
+
+        try:
+            host = (urlsplit(url).hostname or "").lower()
+        except ValueError:
+            host = ""
+        local = (
+            not host
+            or host in {"localhost", "127.0.0.1", "::1", "[::1]"}
+            or "." not in host
+        )
+        mode = "prefer" if local else "require"
+        return url + ("&" if "?" in url else "?") + f"sslmode={mode}"
 
     @contextmanager
     def connect(self) -> Iterator[Any]:

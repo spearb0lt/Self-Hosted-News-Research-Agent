@@ -6,6 +6,11 @@ deploy hook to run a migration and the first request has to find a usable
 database whether or not it is the first request ever.
 
 Timestamps are ISO 8601 UTC text throughout. See `engine` for why.
+
+Boolean defaults are written as TRUE and FALSE rather than 1 and 0. SQLite maps
+{BOOL} to INTEGER and would take either, but Postgres maps it to BOOLEAN and
+rejects an integer default outright with a DatatypeMismatch. Both engines
+accept the keywords.
 """
 from __future__ import annotations
 
@@ -33,7 +38,7 @@ TABLES: tuple[str, ...] = (
         themes        {JSON},
         keywords      {JSON},
         config        {JSON},
-        enabled       {BOOL} DEFAULT 1,
+        enabled       {BOOL} DEFAULT TRUE,
         created_at    {TS} NOT NULL,
         updated_at    {TS} NOT NULL
     )
@@ -47,7 +52,7 @@ TABLES: tuple[str, ...] = (
         url                  {TEXT} NOT NULL,
         config               {JSON},
         weight               {REAL} DEFAULT 1.0,
-        enabled              {BOOL} DEFAULT 1,
+        enabled              {BOOL} DEFAULT TRUE,
         etag                 {TEXT} DEFAULT '',
         last_modified        {TEXT} DEFAULT '',
         last_run_at          {TS},
@@ -133,7 +138,7 @@ TABLES: tuple[str, ...] = (
         event_id    {BIGINT} NOT NULL REFERENCES events(id) ON DELETE CASCADE,
         article_id  {BIGINT} NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
         similarity  {REAL} DEFAULT 0,
-        is_primary  {BOOL} DEFAULT 0,
+        is_primary  {BOOL} DEFAULT FALSE,
         PRIMARY KEY (event_id, article_id)
     )
     """,
