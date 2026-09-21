@@ -167,8 +167,14 @@ def write_bullets(
     provider: str | None = None,
     model: str | None = None,
     theme_label: str = "",
+    use_model: bool = True,
 ) -> list[dict[str, Any]]:
-    """Pick and phrase the headline bullets for a theme or a whole digest."""
+    """Pick and phrase the headline bullets for a theme or a whole digest.
+
+    With use_model off the ranking and the per outlet cap still apply, so a raw
+    digest is a genuinely prioritised list of headlines rather than an unsorted
+    dump. Only the rewriting is skipped.
+    """
     if not events:
         return []
 
@@ -200,7 +206,7 @@ def write_bullets(
     prompt = "\n".join(lines)
 
     try:
-        rows = llm.generate_json(
+        rows = [] if not use_model else llm.generate_json(
             prompt,
             provider=provider,
             model=model,

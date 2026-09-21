@@ -80,6 +80,14 @@ class Context:
         self.dedup_since = hours_ago_iso(
             max(self.lookback_hours, settings.DEDUP_WINDOW_HOURS)
         )
+        # A workspace can opt out of every model call. Deduplication and
+        # clustering are deliberately not covered by this: they run on the
+        # bundled local encoder, cost nothing, need no network, and removing
+        # them would leave the same wire story repeated five times, which is
+        # the problem this project exists to solve. What it does switch off is
+        # theme classification, event summaries, digest bullets and enrichment,
+        # which are the only stages that spend an API quota.
+        self.ai_enabled = bool(config.get("ai_enabled", True))
         self._embedder: Any = None
 
     @property
@@ -473,6 +481,10 @@ def _stage_cluster(ctx: Context) -> StageResult:
 
 
 def _stage_classify(ctx: Context) -> StageResult:
+    if not ctx.ai_enabled:
+        # Raw mode: themes are left unset, so the digest groups everything together.
+        return "done"
+
     events, _ = repo.events_in_window(ctx.workspace_id, ctx.since, limit=500)
     pending = [e for e in events if not e.get("theme")]
     if not pending:
@@ -491,6 +503,10 @@ def _stage_classify(ctx: Context) -> StageResult:
 
 
 def _stage_summarise(ctx: Context) -> StageResult:
+    if not ctx.ai_enabled:
+        # Raw mode: each event keeps its own best headline and source text.
+        return "done"
+
     events, _ = repo.events_in_window(ctx.workspace_id, ctx.since, limit=200)
     pending = [e for e in events if not e.get("summary")]
     pending.sort(key=lambda e: -float(e.get("importance") or 0))
@@ -574,7 +590,8 @@ def _stage_digest(ctx: Context) -> StageResult:
     count = int(config.get("digest_bullets") or settings.DIGEST_BULLETS)
     try:
         bullets = summarize.write_bullets(
-            events, count=count, provider=ctx.provider, model=ctx.model
+            events, count=count, provider=ctx.provider, model=ctx.model,
+            use_model=ctx.ai_enabled,
         )
     except LLMError:
         bullets = []
@@ -588,11 +605,12 @@ def _stage_digest(ctx: Context) -> StageResult:
     html = digest.render_html(payload)
 
     provider_id, model_id = "", ""
-    try:
-        selection = llm.resolve(ctx.provider, ctx.model)
-        provider_id, model_id = selection.provider.id, selection.model
-    except LLMError:
-        pass
+    if ctx.ai_enabled:
+        try:
+            selection = llm.resolve(ctx.provider, ctx.model)
+            provider_id, model_id = selection.provider.id, selection.model
+        except LLMError:
+            pass
 
     digest_id = repo.create_digest(
         ctx.workspace_id,
@@ -612,6 +630,10 @@ def _stage_digest(ctx: Context) -> StageResult:
 
 
 def _stage_enrich(ctx: Context) -> StageResult:
+    if not ctx.ai_enabled:
+        # Raw mode: no entities, sentiment or stance are extracted.
+        return "done"
+
     articles = repo.articles_in_window(ctx.workspace_id, ctx.since)
     last_id = int(ctx.cursor.get("enrich_after_id") or 0)
     pending = [a for a in articles if int(a["id"]) > last_id and not a.get("stance")]

@@ -126,7 +126,11 @@ _FENCE_RE = re.compile(r"^```(?:json|JSON)?\s*|\s*```$")
 # Models ignore style instructions often enough that the rule is also enforced
 # on every response. Built from code points so that no source file in this
 # project contains one of these characters itself.
-_DASH = "".join(chr(code) for code in (0x2013, 0x2014, 0x2012, 0x2015))
+# En dash, em dash, figure dash, horizontal bar, plus the non breaking and
+# plain Unicode hyphens. The last two are not em dashes and so were missed
+# at first, but they are still non ASCII and a Windows console cannot encode
+# them, which turns a perfectly good report into a UnicodeEncodeError.
+_DASH = "".join(chr(code) for code in (0x2013, 0x2014, 0x2012, 0x2015, 0x2010, 0x2011))
 _RANGE_DASH_RE = re.compile(rf"(?<=\d)\s*[{_DASH}]\s*(?=\d)")
 _LEADING_DASH_RE = re.compile(rf"(?m)^([ \t]*)[{_DASH}][ \t]+")
 _SPACED_DASH_RE = re.compile(rf"[ \t]+[{_DASH}][ \t]+")

@@ -29,6 +29,7 @@ from ..llm import registry as llm
 from ..pipeline import runner
 from ..presets import list_presets, load_preset
 from ..rag import chat as rag
+from ..research import available_backends, research, to_workspace
 from ..runtime import current as runtime
 from ..util import hours_ago_iso
 
@@ -109,6 +110,24 @@ class DiscoverRequest(BaseModel):
 class DeliverRequest(BaseModel):
     channels: list[str] = Field(default_factory=list)
     to: str = ""
+
+
+class ResearchRequest(BaseModel):
+    query: str
+    # "raw" ranks and lists the articles and needs no model at all.
+    # "report" additionally writes a cited brief from the top results.
+    mode: str = "raw"
+    backends: list[str] | None = None
+    limit: int = 25
+    extract: bool = True
+    provider: str | None = None
+    model: str | None = None
+
+
+class ResearchSaveRequest(BaseModel):
+    query: str
+    name: str = ""
+    backends: list[str] | None = None
 
 
 class ChatRequest(BaseModel):
@@ -608,6 +627,60 @@ def cron_run_all(
             {"id": r["id"], "status": r["status"], "stage": r["stage"]} for r in advanced
         ],
     }
+
+
+# ----------------------------------------------------------------- research
+
+
+@router.get("/research/backends")
+def research_backends() -> dict[str, Any]:
+    return {"backends": available_backends()}
+
+
+@router.post("/research")
+def post_research(body: ResearchRequest) -> dict[str, Any]:
+    """Search a topic across every usable backend, without creating a workspace."""
+    if not body.query.strip():
+        raise fail(400, "Type something to search for.")
+    mode = body.mode if body.mode in ("raw", "report") else "raw"
+    if mode == "report" and not llm.any_available():
+        raise fail(
+            400,
+            "A written brief needs an AI provider.",
+            hint=(
+                "Paste a key in Settings, or search in raw mode, which ranks and "
+                "lists the articles with no model at all."
+            ),
+        )
+    try:
+        result = research(
+            body.query,
+            mode=mode,
+            backends=body.backends,
+            limit=max(1, min(body.limit, 60)),
+            extract=body.extract,
+            provider=body.provider,
+            model=body.model,
+        )
+    except EmbeddingError as exc:
+        raise fail(400, exc.message, hint=exc.hint, provider=exc.provider) from exc
+    except ValueError as exc:
+        raise fail(400, str(exc)) from exc
+    return result.as_dict()
+
+
+@router.post("/research/save", status_code=201)
+def post_research_save(body: ResearchSaveRequest) -> dict[str, Any]:
+    """Turn a topic search into a standing workspace that runs every day."""
+    if not body.query.strip():
+        raise fail(400, "A workspace needs the query it was built from.")
+    try:
+        result = research(body.query, mode="raw", backends=body.backends, limit=30)
+    except ValueError as exc:
+        raise fail(400, str(exc)) from exc
+    workspace = to_workspace(result, name=body.name)
+    workspace["sources"] = repo.list_sources(int(workspace["id"]))
+    return workspace
 
 
 # ------------------------------------------------------------------ presets
