@@ -229,16 +229,21 @@ def post_workspace(body: WorkspaceCreate) -> dict[str, Any]:
         preset = load_preset(body.preset)
         if preset is None:
             raise fail(404, f"No preset named '{body.preset}'.")
+        # A preset supplies the defaults. Anything the caller stated explicitly
+        # wins over them, because a request that asked for raw mode and got a
+        # workspace that summarises anyway is worse than no preset at all.
+        merged_config = dict(preset.get("config") or {})
+        merged_config.update(body.config or {})
         workspace = repo.create_workspace(
             name=body.name or preset.get("name") or body.preset,
             slug=body.slug or preset.get("slug") or body.preset,
-            description=preset.get("description") or "",
+            description=body.description or preset.get("description") or "",
             timezone=body.timezone or preset.get("timezone") or settings.DEFAULT_TIMEZONE,
-            language=preset.get("language") or "en",
+            language=body.language if body.language != "en" else (preset.get("language") or "en"),
             preset=body.preset,
-            themes=preset.get("themes"),
-            keywords=preset.get("keywords"),
-            config=preset.get("config"),
+            themes=body.themes if body.themes is not None else preset.get("themes"),
+            keywords=body.keywords if body.keywords is not None else preset.get("keywords"),
+            config=merged_config,
         )
         for source in preset.get("sources") or []:
             repo.add_source(
