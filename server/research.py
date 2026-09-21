@@ -79,6 +79,7 @@ QUERY_BACKENDS: tuple[str, ...] = (
 class ResearchResult:
     query: str
     mode: str
+    sort: str = "relevance"
     articles: list[dict[str, Any]] = field(default_factory=list)
     report: str = ""
     citations: list[dict[str, Any]] = field(default_factory=list)
@@ -91,6 +92,7 @@ class ResearchResult:
         return {
             "query": self.query,
             "mode": self.mode,
+            "sort": self.sort,
             "articles": self.articles,
             "report": self.report,
             "citations": self.citations,
@@ -302,6 +304,7 @@ def research(
     limit: int = 25,
     per_backend: int = 20,
     extract: bool = True,
+    sort: str = "relevance",
     provider: str | None = None,
     model: str | None = None,
     seconds: float | None = None,
@@ -324,7 +327,8 @@ def research(
     total = len(items)
     if not items:
         return ResearchResult(
-            query=query, mode=mode, backends_used=used, backends_failed=failed
+            query=query, mode=mode, sort=sort,
+            backends_used=used, backends_failed=failed,
         )
 
     if extract and settings.EXTRACT_FULLTEXT:
@@ -332,12 +336,24 @@ def research(
 
     ranked, removed = _rank(items, query)
     ranked = ranked[:limit]
+
+    # Relevance decides which results survive the cut, always. Date order is
+    # applied afterwards, to the survivors, so asking for newest first never
+    # turns the list into whatever happened to be published most recently
+    # regardless of whether it is about the topic.
+    if sort in ("newest", "oldest"):
+        ranked.sort(
+            key=lambda a: a.get("published_at") or "",
+            reverse=(sort == "newest"),
+        )
+
     for position, article in enumerate(ranked, start=1):
         article["n"] = position
 
     result = ResearchResult(
         query=query,
         mode=mode,
+        sort=sort,
         articles=ranked,
         backends_used=used,
         backends_failed=failed,

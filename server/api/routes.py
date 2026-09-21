@@ -120,6 +120,9 @@ class ResearchRequest(BaseModel):
     backends: list[str] | None = None
     limit: int = 25
     extract: bool = True
+    # "relevance" keeps the ranked order. "newest" and "oldest" re-order the
+    # results that relevance already selected.
+    sort: str = "relevance"
     provider: str | None = None
     model: str | None = None
 
@@ -399,13 +402,15 @@ def get_events(
     hours: int = Query(default=0),
     limit: int = Query(default=50, le=200),
     offset: int = Query(default=0, ge=0),
+    sort: str = Query(default="importance", pattern="^(importance|newest|oldest)$"),
 ) -> dict[str, Any]:
     workspace = _workspace_or_404(slug)
     window = hours or int(
         (workspace.get("config") or {}).get("lookback_hours") or settings.LOOKBACK_HOURS
     )
     events, total = repo.events_in_window(
-        int(workspace["id"]), hours_ago_iso(window), theme=theme, limit=limit, offset=offset
+        int(workspace["id"]), hours_ago_iso(window), theme=theme, limit=limit,
+        offset=offset, sort=sort,
     )
     for event in events:
         event["articles"] = repo.event_articles(event["id"])
@@ -420,11 +425,12 @@ def get_articles(
     limit: int = Query(default=50, le=200),
     offset: int = Query(default=0, ge=0),
     include_duplicates: bool = Query(default=False),
+    sort: str = Query(default="newest", pattern="^(newest|oldest)$"),
 ) -> dict[str, Any]:
     workspace = _workspace_or_404(slug)
     articles, total = repo.get_articles(
         int(workspace["id"]), theme=theme, query=q, limit=limit, offset=offset,
-        include_duplicates=include_duplicates,
+        include_duplicates=include_duplicates, sort=sort,
     )
     return {"articles": articles, "total": total}
 
@@ -659,6 +665,7 @@ def post_research(body: ResearchRequest) -> dict[str, Any]:
             backends=body.backends,
             limit=max(1, min(body.limit, 60)),
             extract=body.extract,
+            sort=body.sort if body.sort in ("relevance", "newest", "oldest") else "relevance",
             provider=body.provider,
             model=body.model,
         )

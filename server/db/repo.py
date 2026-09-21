@@ -565,6 +565,7 @@ def get_articles(
     limit: int = 50,
     offset: int = 0,
     include_duplicates: bool = False,
+    sort: str = "newest",
 ) -> tuple[list[dict[str, Any]], int]:
     where = ["workspace_id = ?"]
     params: list[Any] = [workspace_id]
@@ -583,10 +584,13 @@ def get_articles(
 
     db = get_db()
     total = int(db.scalar(f"SELECT COUNT(*) FROM articles WHERE {clause}", params) or 0)
+    # An article with no published date falls back to when it was fetched, so
+    # a feed that omits dates does not sink to the bottom of every listing.
+    direction = "ASC" if sort == "oldest" else "DESC"
     rows = db.query(
         f"""
         SELECT * FROM articles WHERE {clause}
-         ORDER BY COALESCE(NULLIF(published_at, ''), fetched_at) DESC, id DESC
+         ORDER BY COALESCE(NULLIF(published_at, ''), fetched_at) {direction}, id {direction}
          LIMIT ? OFFSET ?
         """,
         [*params, int(limit), int(offset)],
@@ -837,8 +841,21 @@ def add_event_articles(
     )
 
 
+_EVENT_ORDERS = {
+    "importance": "importance DESC, size DESC, last_seen DESC",
+    "newest": "last_seen DESC, importance DESC",
+    "oldest": "first_seen ASC, importance DESC",
+}
+
+
 def events_in_window(
-    workspace_id: int, since_iso: str, *, theme: str = "", limit: int = 100, offset: int = 0
+    workspace_id: int,
+    since_iso: str,
+    *,
+    theme: str = "",
+    limit: int = 100,
+    offset: int = 0,
+    sort: str = "importance",
 ) -> tuple[list[dict[str, Any]], int]:
     where = ["workspace_id = ?", "last_seen >= ?"]
     params: list[Any] = [workspace_id, since_iso]
@@ -848,10 +865,11 @@ def events_in_window(
     clause = " AND ".join(where)
     db = get_db()
     total = int(db.scalar(f"SELECT COUNT(*) FROM events WHERE {clause}", params) or 0)
+    order = _EVENT_ORDERS.get(sort, _EVENT_ORDERS["importance"])
     rows = db.query(
         f"""
         SELECT * FROM events WHERE {clause}
-         ORDER BY importance DESC, size DESC, last_seen DESC
+         ORDER BY {order}
          LIMIT ? OFFSET ?
         """,
         [*params, int(limit), int(offset)],
