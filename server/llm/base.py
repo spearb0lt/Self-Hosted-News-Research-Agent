@@ -138,11 +138,26 @@ _ANY_DASH_RE = re.compile(rf"[{_DASH}]")
 _DOUBLE_PUNCT_RE = re.compile(r"([,;:])[ \t]*,[ \t]+")
 
 
+# Several models write a citation marker with CJK lenticular brackets, so a
+# cited report comes back reading 1 rather than [1] and stops matching the
+# numbered list underneath it. Same class of problem as the dashes: the model
+# ignores the instruction, and the characters are outside cp1252 as well, so
+# printing the report on a Windows console raises UnicodeEncodeError.
+_BRACKETS = {
+    0x3010: "[",
+    0x3011: "]",
+    0xFF3B: "[",
+    0xFF3D: "]",
+    0xFF08: "(",
+    0xFF09: ")",
+}
+
+
 def sanitise_output(text: str) -> str:
-    """Replace typographic dashes with plain ASCII punctuation."""
+    """Replace typographic dashes and brackets with plain ASCII punctuation."""
     if not text:
         return text
-    cleaned = _RANGE_DASH_RE.sub(" to ", text)
+    cleaned = _RANGE_DASH_RE.sub(" to ", text.translate(_BRACKETS))
     cleaned = _LEADING_DASH_RE.sub(lambda m: m.group(1) + "- ", cleaned)
     cleaned = _SPACED_DASH_RE.sub(", ", cleaned)
     cleaned = _ANY_DASH_RE.sub("-", cleaned)

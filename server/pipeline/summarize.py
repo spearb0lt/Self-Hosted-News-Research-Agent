@@ -27,15 +27,19 @@ EVENT_SYSTEM = (
     "1. Use only what the supplied articles say. Never add a fact, figure, name, "
     "date or quote that is not present in them.\n"
     "2. When the articles disagree, say so plainly rather than choosing a side.\n"
-    "3. When something important is not stated, write that it is not stated. Do "
-    "not fill the gap.\n"
-    "4. No opinion, no speculation about consequences, no editorialising.\n"
-    "5. Write plainly. No marketing language, no rhetorical questions."
+    "3. Never fill a gap with something the articles do not say. If they only "
+    "support one sentence, write one sentence and stop.\n"
+    "4. Write about the event, never about the coverage. Do not mention the "
+    "articles, the sources, or what they do or do not report. Wording such as "
+    "'the article does not provide details' or 'Source 1 says' is "
+    "forbidden: a reader wants the news, not a note about its absence.\n"
+    "5. No opinion, no speculation about consequences, no editorialising.\n"
+    "6. Write plainly. No marketing language, no rhetorical questions."
 )
 
 EVENT_SCHEMA = (
     '{"title": "a factual headline under 100 characters",'
-    ' "summary": "exactly two sentences",'
+    ' "summary": "one or two sentences, whichever the coverage supports",'
     ' "why_it_matters": "one sentence, or an empty string when the articles do '
     'not support one",'
     ' "disagreement": "one sentence describing any conflict between sources, or '
