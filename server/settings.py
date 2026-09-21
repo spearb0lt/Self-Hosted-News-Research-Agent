@@ -251,6 +251,14 @@ SUMMARY_TEMPERATURE = env_float("SUMMARY_TEMPERATURE", 0.2)
 
 # -------------------------------------------------------------------- delivery
 
+# Automatic delivery after a scheduled run. Off by default and deliberately so:
+# a digest that mails itself the moment someone clones the repo is a surprise,
+# and the useful case is a real deployment on a real schedule. A workspace can
+# override the channels and the recipient in its own config.
+AUTO_DELIVER = env_bool("AUTO_DELIVER", False)
+AUTO_DELIVER_CHANNELS = env_list("AUTO_DELIVER_CHANNELS", "email")
+AUTO_DELIVER_TO = env("AUTO_DELIVER_TO", "SMTP_TO", default="")
+
 SMTP_HOST = env("SMTP_HOST")
 SMTP_PORT = env_int("SMTP_PORT", 587)
 SMTP_USER = env("SMTP_USER", "SMTP_USERNAME")

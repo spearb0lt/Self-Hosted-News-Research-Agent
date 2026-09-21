@@ -1083,6 +1083,20 @@ def latest_digest(workspace_id: int) -> dict[str, Any] | None:
     return shape_digest(row, full=True) if row else None
 
 
+def delivery_succeeded(digest_id: int, channel: str) -> bool:
+    """Whether this digest already went out on this channel.
+
+    Vercel Cron explicitly does not guarantee against duplicate invocations,
+    and the tick endpoint is safe to call as often as you like, so without this
+    a digest would be mailed once per tick.
+    """
+    row = get_db().query_one(
+        "SELECT id FROM deliveries WHERE digest_id = ? AND channel = ? AND status = ? LIMIT 1",
+        (digest_id, channel, "sent"),
+    )
+    return row is not None
+
+
 def record_delivery(
     digest_id: int, *, channel: str, target: str, status: str, error: str = ""
 ) -> None:

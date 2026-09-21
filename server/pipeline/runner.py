@@ -46,6 +46,7 @@ STAGES: tuple[str, ...] = (
     "summarise",
     "digest",
     "enrich",
+    "deliver",
 )
 
 
@@ -702,6 +703,53 @@ def _stage_enrich(ctx: Context) -> StageResult:
     return "done"
 
 
+def _stage_deliver(ctx: Context) -> StageResult:
+    """Send the digest, when this deployment has been told to.
+
+    Off unless AUTO_DELIVER is set, because a clone of this repository that
+    mails someone the moment it runs would be a surprise. A workspace can name
+    its own channels and recipient, which is what makes one beat go to email and
+    another to a Slack channel.
+
+    Every send is recorded and checked first. The cron tick is safe to call as
+    often as you like and Vercel does not promise against duplicate
+    invocations, so without that check a digest would go out once per tick.
+    """
+    config = ctx.workspace.get("config") or {}
+    enabled = bool(config.get("auto_deliver", settings.AUTO_DELIVER))
+    if not enabled:
+        return "done"
+
+    digest_id = (ctx.stats or {}).get("digest_id")
+    if not digest_id:
+        return "done"
+    digest = repo.get_digest(int(digest_id))
+    if digest is None:
+        return "done"
+
+    channels = config.get("delivery_channels") or settings.AUTO_DELIVER_CHANNELS
+    target = str(config.get("delivery_to") or settings.AUTO_DELIVER_TO or "")
+    pending = [c for c in channels if not repo.delivery_succeeded(int(digest_id), c)]
+    if not pending:
+        return "done"
+
+    from ..delivery import channels as delivery
+
+    for result in delivery.deliver(digest, pending, target=target):
+        repo.record_delivery(
+            int(digest_id), channel=result.channel, target=result.target,
+            status=result.status, error=result.error,
+        )
+        if result.status == "sent":
+            ctx.bump("delivered")
+        elif result.status == "failed":
+            ctx.bump("delivery_failed")
+            ctx.note(f"Delivery to {result.channel} failed: {result.error[:120]}")
+        else:
+            ctx.note(f"Delivery to {result.channel} skipped: {result.error[:120]}")
+    return "done"
+
+
 _HANDLERS: dict[str, Callable[[Context], StageResult]] = {
     "ingest": _stage_ingest,
     "extract": _stage_extract,
@@ -712,6 +760,7 @@ _HANDLERS: dict[str, Callable[[Context], StageResult]] = {
     "summarise": _stage_summarise,
     "digest": _stage_digest,
     "enrich": _stage_enrich,
+    "deliver": _stage_deliver,
 }
 
 

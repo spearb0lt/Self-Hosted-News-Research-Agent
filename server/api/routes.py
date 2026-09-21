@@ -20,10 +20,12 @@ from pydantic import BaseModel, Field
 from .. import settings
 from ..db import repo
 from ..delivery import channels as delivery
+from ..delivery import export as exporters
 from ..delivery import feed as feed_renderer
 from ..embeddings import EmbeddingError
 from ..embeddings import registry as embeddings
 from ..ingest import SourceError, describe_adapters, discover_feeds
+from ..ingest import opml as opml_io
 from ..llm import LLMError
 from ..llm import registry as llm
 from ..pipeline import runner
@@ -131,6 +133,13 @@ class ResearchSaveRequest(BaseModel):
     query: str
     name: str = ""
     backends: list[str] | None = None
+
+
+class OpmlImportRequest(BaseModel):
+    opml: str
+    # Off by default: importing someone's whole reader is usually a few hundred
+    # feeds, and enabling them all at once makes the next run enormous.
+    enabled: bool = True
 
 
 class ChatRequest(BaseModel):
@@ -632,6 +641,131 @@ def cron_run_all(
         "advanced": [
             {"id": r["id"], "status": r["status"], "stage": r["stage"]} for r in advanced
         ],
+    }
+
+
+# ------------------------------------------------------------------ exports
+
+
+_EXPORT_TYPES = {
+    "md": ("text/markdown; charset=utf-8", "md"),
+    "csv": ("text/csv; charset=utf-8", "csv"),
+    "pdf": ("application/pdf", "pdf"),
+    "json": ("application/json; charset=utf-8", "json"),
+}
+
+
+@router.get("/digests/{digest_id}/export")
+def export_digest(
+    digest_id: int,
+    format: str = Query(default="md", pattern="^(md|csv|pdf|json)$"),
+) -> Response:
+    digest = repo.get_digest(digest_id)
+    if digest is None:
+        raise fail(404, f"No digest {digest_id}.")
+
+    media_type, extension = _EXPORT_TYPES[format]
+    try:
+        if format == "md":
+            body: Any = exporters.to_markdown(digest)
+        elif format == "csv":
+            body = exporters.digest_to_csv(digest)
+        elif format == "json":
+            import json as _json
+
+            body = _json.dumps(digest.get("payload") or {}, indent=2, ensure_ascii=False)
+        else:
+            body = exporters.to_pdf(digest)
+    except (RuntimeError, ValueError) as exc:
+        raise fail(
+            400,
+            f"That digest could not be exported as {format}.",
+            hint=str(exc)[:200],
+        ) from exc
+
+    filename = exporters.filename_for(digest, extension)
+    return Response(
+        content=body,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/workspaces/{slug}/articles.csv")
+def export_articles(
+    slug: str,
+    limit: int = Query(default=2000, le=20000),
+    include_duplicates: bool = Query(default=False),
+) -> Response:
+    workspace = _workspace_or_404(slug)
+    articles, _ = repo.get_articles(
+        int(workspace["id"]), limit=limit, include_duplicates=include_duplicates
+    )
+    return Response(
+        content=exporters.articles_to_csv(articles),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{slug}-articles.csv"'
+        },
+    )
+
+
+@router.get("/workspaces/{slug}/sources.opml")
+def export_opml(slug: str) -> Response:
+    workspace = _workspace_or_404(slug)
+    sources = repo.list_sources(int(workspace["id"]))
+    # OPML can only describe a feed by its xmlUrl, so a Google News query or a
+    # subreddit has nothing to write. The header lets the UI say which ones were
+    # left behind instead of the count silently not matching.
+    skipped = opml_io.skipped_kinds(sources)
+    return Response(
+        content=opml_io.render(workspace, sources),
+        media_type="text/x-opml; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{slug}.opml"',
+            "X-Skipped-Kinds": ",".join(skipped),
+            "Access-Control-Expose-Headers": "X-Skipped-Kinds",
+        },
+    )
+
+
+@router.post("/workspaces/{slug}/sources/opml", status_code=201)
+def import_opml(slug: str, body: OpmlImportRequest) -> dict[str, Any]:
+    """Add every feed in an OPML file to this workspace."""
+    workspace = _workspace_or_404(slug)
+    result = opml_io.parse(body.opml)
+    if result.error and not result.feeds:
+        raise fail(
+            400,
+            result.error,
+            hint="Export an OPML file from your feed reader and upload that.",
+        )
+
+    added, existing = 0, 0
+    for feed in result.feeds:
+        before = len(repo.list_sources(int(workspace["id"])))
+        source = repo.add_source(
+            int(workspace["id"]),
+            kind=feed.kind,
+            url=feed.url,
+            name=feed.title,
+        )
+        if source is None:
+            continue
+        after = len(repo.list_sources(int(workspace["id"])))
+        if after > before:
+            added += 1
+            if not body.enabled:
+                repo.update_source(int(source["id"]), enabled=False)
+        else:
+            existing += 1
+
+    return {
+        "added": added,
+        "already_present": existing,
+        "skipped": result.skipped,
+        "total_in_file": len(result.feeds),
+        "sources": repo.list_sources(int(workspace["id"])),
     }
 
 
