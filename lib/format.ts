@@ -1,6 +1,6 @@
 /** Small display helpers shared by the pages. */
 
-import type { JsonValue, Theme } from "./types";
+import type { ArticleStance, JsonValue, Theme } from "./types";
 
 /**
  * Articles and events carry a theme id, while the taxonomy carries the label a
@@ -14,6 +14,39 @@ export function themeLabel(
   if (!id) return "";
   const match = themes?.find((theme) => theme.id === id);
   return match?.label || id;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Tone                                                                        */
+/* -------------------------------------------------------------------------- */
+
+export type SentimentBand = "negative" | "neutral" | "positive";
+
+/**
+ * Turn the stored score into one of three words.
+ *
+ * A bare float tells a reader nothing, and the scores this pipeline writes are
+ * quantised to a tenth, so the band either side of zero is drawn just inside
+ * that step: 0.0 is neutral, 0.1 already reads as positive.
+ */
+export function sentimentBand(value: number | null | undefined): SentimentBand | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  if (value <= -0.05) return "negative";
+  if (value >= 0.05) return "positive";
+  return "neutral";
+}
+
+/** What each stance means, for a label a reader has not met before. */
+const STANCE_HINTS: Record<ArticleStance, string> = {
+  factual: "Reports what happened without arguing a position.",
+  critical: "Argues against its subject.",
+  supportive: "Argues for its subject.",
+  mixed: "Argues both ways, or quotes two sides without settling it.",
+};
+
+export function stanceHint(stance: string | null | undefined): string {
+  if (!stance) return "";
+  return STANCE_HINTS[stance as ArticleStance] ?? "";
 }
 
 /** "4 minutes ago" for anything recent, an absolute date once it is old. */
@@ -77,6 +110,16 @@ export function money(value: number | null | undefined): string {
   if (amount === 0) return "$0.00";
   if (amount < 0.01) return `$${amount.toFixed(4)}`;
   return `$${amount.toFixed(2)}`;
+}
+
+/**
+ * A cost, or the fact that there is not one.
+ *
+ * A null cost means the model has no published price, which is not the same as
+ * having been free. Printing $0.00 for it would be a lie about the bill.
+ */
+export function cost(value: number | null | undefined): string {
+  return value === null || value === undefined ? "not priced" : money(value);
 }
 
 export function compactNumber(value: number | null | undefined): string {

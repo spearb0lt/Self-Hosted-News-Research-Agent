@@ -5,8 +5,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EmptyState, ErrorState, SkeletonCards } from "@/components/states";
 import { Badge, Button, Card, TextInput, Toggle, cx } from "@/components/ui";
 import { ApiError, api, toApiError } from "@/lib/api";
-import { absoluteDateTime, compactNumber, hostOf, themeLabel } from "@/lib/format";
-import { useAsync, useDebounced } from "@/lib/hooks";
+import {
+  absoluteDateTime,
+  compactNumber,
+  hostOf,
+  sentimentBand,
+  stanceHint,
+  themeLabel,
+} from "@/lib/format";
+import { useAsync, useDebounced, useDisplayPrefs } from "@/lib/hooks";
+import type { BadgeTone } from "@/components/ui";
 import type { Article, ScoredArticle, Theme } from "@/lib/types";
 
 const PAGE_SIZE = 25;
@@ -16,6 +24,12 @@ export function ArticlesView({ slug }: { slug: string }) {
   const [theme, setTheme] = useState("");
   const [semantic, setSemantic] = useState(false);
   const debouncedQuery = useDebounced(query, 350);
+  // Read once for the whole list rather than per card, so one change of the
+  // preference does not wake a subscription on every article on screen.
+  const display = useDisplayPrefs();
+  // The export is of the whole workspace, not of what is filtered on screen, so
+  // the only choice it takes is the one the endpoint itself offers.
+  const [withDuplicates, setWithDuplicates] = useState(false);
 
   // Themes come from the workspace, so the filter lists the taxonomy even when
   // the current page of articles happens not to use all of it.
@@ -143,7 +157,7 @@ export function ArticlesView({ slug }: { slug: string }) {
         ) : null}
       </div>
 
-      <div className="flex items-center gap-3 text-sm text-muted">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-muted">
         <span aria-live="polite">
           {initialising
             ? "Loading articles"
@@ -152,6 +166,26 @@ export function ArticlesView({ slug }: { slug: string }) {
               : `${compactNumber(total)} ${total === 1 ? "article" : "articles"}`}
         </span>
         {loading && !initialising ? <span className="text-xs">updating</span> : null}
+
+        <span className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1">
+          <label className="flex items-center gap-1.5 text-xs">
+            <input
+              type="checkbox"
+              checked={withDuplicates}
+              onChange={(event) => setWithDuplicates(event.target.checked)}
+              className="size-3.5 accent-[var(--accent)]"
+            />
+            include duplicates in the file
+          </label>
+          {/* A plain link, so the browser streams the file straight to disk. */}
+          <a
+            href={api.articlesCsvUrl(slug, { include_duplicates: withDuplicates || undefined })}
+            download
+            className="rounded-md text-sm font-medium text-accent underline underline-offset-2"
+          >
+            Download CSV
+          </a>
+        </span>
       </div>
 
       {initialising ? (
@@ -170,7 +204,12 @@ export function ArticlesView({ slug }: { slug: string }) {
         <>
           <ul className="flex flex-col gap-3">
             {articles.map((article) => (
-              <ArticleCard key={String(article.id)} article={article} themes={themes} />
+              <ArticleCard
+                key={String(article.id)}
+                article={article}
+                themes={themes}
+                showTone={display.articleTone}
+              />
             ))}
           </ul>
 
@@ -225,7 +264,55 @@ function hasScore(article: Article): article is ScoredArticle {
   return typeof (article as ScoredArticle).score === "number";
 }
 
-function ArticleCard({ article, themes }: { article: Article; themes: Theme[] }) {
+/**
+ * Tone as a word rather than a float.
+ *
+ * The stored value is a score between roughly -1 and 1, which says nothing to
+ * a reader on its own. The colour repeats what the label already says, so the
+ * indicator never depends on colour alone.
+ */
+const SENTIMENT_TONES: Record<"negative" | "neutral" | "positive", BadgeTone> = {
+  negative: "danger",
+  neutral: "neutral",
+  positive: "ok",
+};
+
+function ToneIndicators({ article }: { article: Article }) {
+  const band = sentimentBand(article.sentiment);
+  const stance = article.stance || "";
+  if (!band && !stance) return null;
+
+  return (
+    <>
+      {band ? (
+        // The word "tone" is carried on the badge rather than left to a title,
+        // because a neutral reading and a stance are both grey pills and would
+        // otherwise sit side by side saying nothing about which is which.
+        <Badge
+          tone={SENTIMENT_TONES[band]}
+          title={`Tone scored ${article.sentiment?.toFixed(2)} on a scale from -1 to 1`}
+        >
+          {band} tone
+        </Badge>
+      ) : null}
+      {stance ? (
+        <Badge tone="neutral" title={stanceHint(stance)}>
+          {stance}
+        </Badge>
+      ) : null}
+    </>
+  );
+}
+
+function ArticleCard({
+  article,
+  themes,
+  showTone,
+}: {
+  article: Article;
+  themes: Theme[];
+  showTone: boolean;
+}) {
   const label = themeLabel(themes, article.theme);
   return (
     <Card as="li" className="p-4 sm:p-5">
@@ -242,6 +329,7 @@ function ArticleCard({ article, themes }: { article: Article; themes: Theme[] })
         </h3>
         <div className="flex shrink-0 flex-wrap gap-1.5">
           {label ? <Badge tone="accent">{label}</Badge> : null}
+          {showTone ? <ToneIndicators article={article} /> : null}
           {hasScore(article) ? (
             <Badge tone="neutral" title="Similarity to your search">
               {article.score.toFixed(2)}
@@ -259,7 +347,6 @@ function ArticleCard({ article, themes }: { article: Article; themes: Theme[] })
         {article.author ? <span className="break-anywhere">{article.author}</span> : null}
         {article.published_at ? <span>{absoluteDateTime(article.published_at)}</span> : null}
         {article.word_count ? <span>{compactNumber(article.word_count)} words</span> : null}
-        {article.sentiment ? <span>{article.sentiment}</span> : null}
       </div>
     </Card>
   );

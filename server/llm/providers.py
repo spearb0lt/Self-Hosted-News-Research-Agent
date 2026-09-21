@@ -14,6 +14,7 @@ from typing import Any
 
 from .. import settings
 from ..runtime import current as runtime
+from ..util import tcp_reachable
 from . import keyring
 from .base import (
     STYLE_RULES,
@@ -833,6 +834,7 @@ class LocalOpenAIProvider(OpenAICompatibleProvider):
     local = True
     key_optional = True
     _probe_ttl = 30.0
+    _absent_ttl = 180.0
 
     def __init__(self) -> None:
         self._probe: tuple[float, bool] = (0.0, False)
@@ -847,18 +849,24 @@ class LocalOpenAIProvider(OpenAICompatibleProvider):
         probe requires a real OpenAI style model listing.
         """
         stamp, ok = self._probe
-        if time.monotonic() - stamp < self._probe_ttl:
+        # A server that is absent stays absent for longer than one that is
+        # present stays healthy, so a negative answer is cached for longer.
+        ttl = self._probe_ttl if ok else self._absent_ttl
+        if time.monotonic() - stamp < ttl:
             return ok
-        ok = False
-        try:
-            import requests
 
-            response = requests.get(f"{self.base_url}/models", timeout=2.0)
-            if response.status_code == 200:
-                payload = response.json()
-                ok = isinstance(payload, dict) and isinstance(payload.get("data"), list)
-        except Exception:  # noqa: BLE001 - not running is the expected case
-            ok = False
+        ok = False
+        # Cheap first: nothing listening means no HTTP request at all.
+        if tcp_reachable(self.base_url):
+            try:
+                import requests
+
+                response = requests.get(f"{self.base_url}/models", timeout=2.0)
+                if response.status_code == 200:
+                    payload = response.json()
+                    ok = isinstance(payload, dict) and isinstance(payload.get("data"), list)
+            except Exception:  # noqa: BLE001 - not running is the expected case
+                ok = False
         self._probe = (time.monotonic(), ok)
         return ok
 

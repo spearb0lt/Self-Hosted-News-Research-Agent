@@ -19,7 +19,7 @@ from typing import Any
 
 from .. import settings
 from ..runtime import current as runtime
-from ..util import normalise_text, tokens
+from ..util import normalise_text, tcp_reachable, tokens
 from .base import BaseEmbedder, EmbeddingError
 
 
@@ -338,14 +338,18 @@ class OllamaEmbedder(BaseEmbedder):
         if not runtime().can("local_llm"):
             return False
         stamp, ok = self._probe
-        if time.monotonic() - stamp < 30.0:
+        if time.monotonic() - stamp < (30.0 if ok else 180.0):
             return ok
-        try:
-            import requests
+        ok = False
+        # See util.tcp_reachable: an HTTP call to a closed local port is slow
+        # enough that four of them dominated every cold configuration request.
+        if tcp_reachable(self.base_url):
+            try:
+                import requests
 
-            ok = requests.get(f"{self.base_url}/api/tags", timeout=2.0).status_code < 500
-        except Exception:  # noqa: BLE001 - not running is the expected case
-            ok = False
+                ok = requests.get(f"{self.base_url}/api/tags", timeout=2.0).status_code < 500
+            except Exception:  # noqa: BLE001 - not running is the expected case
+                ok = False
         self._probe = (time.monotonic(), ok)
         return ok
 

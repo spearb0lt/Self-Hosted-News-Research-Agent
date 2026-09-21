@@ -69,7 +69,15 @@ def reset_registry() -> None:
 
 
 def all_status() -> list[dict[str, Any]]:
-    return [e.status().as_dict() for e in embedder_map().values()]
+    """Every backend's status, gathered concurrently. See llm.registry."""
+    from ..util import map_concurrently
+
+    return [
+        status.as_dict()
+        for status in map_concurrently(
+            lambda item: item.status(), list(embedder_map().values())
+        )
+    ]
 
 
 def available_embedders() -> list[BaseEmbedder]:

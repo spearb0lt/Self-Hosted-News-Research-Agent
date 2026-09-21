@@ -3,6 +3,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ApiError, toApiError } from "./api";
+import {
+  DISPLAY_DEFAULTS,
+  loadDisplayPrefs,
+  subscribeToDisplayPrefs,
+  type DisplayPrefs,
+} from "./keys";
 
 export interface AsyncState<T> {
   data: T | null;
@@ -74,6 +80,23 @@ export function useMounted(): boolean {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   return mounted;
+}
+
+/**
+ * The reader's display choices, kept in step with storage and with other tabs.
+ *
+ * The first render answers with the defaults, on the server and in the browser
+ * alike, so the two agree and nothing hydrates twice differently. The stored
+ * answer arrives a frame later.
+ */
+export function useDisplayPrefs(): DisplayPrefs {
+  const [prefs, setPrefs] = useState<DisplayPrefs>(DISPLAY_DEFAULTS);
+  useEffect(() => {
+    const read = () => setPrefs(loadDisplayPrefs());
+    read();
+    return subscribeToDisplayPrefs(read);
+  }, []);
+  return prefs;
 }
 
 /** Debounce a value, for search boxes that would otherwise fire on every key. */

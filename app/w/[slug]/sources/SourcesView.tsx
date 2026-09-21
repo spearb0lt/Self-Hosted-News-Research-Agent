@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useConfig } from "@/components/ConfigProvider";
 import { EmptyState, ErrorState, SkeletonRows } from "@/components/states";
@@ -14,14 +14,15 @@ import {
   Toggle,
   cx,
 } from "@/components/ui";
-import { ApiError, api, toApiError } from "@/lib/api";
-import { relativeTime } from "@/lib/format";
+import { ApiError, api, saveBlob, toApiError } from "@/lib/api";
+import { plural, relativeTime } from "@/lib/format";
 import { useAsync } from "@/lib/hooks";
 import type { BadgeTone } from "@/components/ui";
 import type {
   DiscoveredFeed,
   Id,
   JsonObject,
+  OpmlImportResponse,
   Source,
   SourceKind,
   WorkspaceDetail,
@@ -61,6 +62,7 @@ export function SourcesView({ slug }: { slug: string }) {
     <div className="flex flex-col gap-6">
       <DiscoverBox slug={slug} onAdded={reload} />
       <AddSourceForm slug={slug} onAdded={reload} />
+      <OpmlCard slug={slug} onImported={reload} />
 
       <section>
         <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -431,6 +433,246 @@ function AddSourceForm({ slug, onAdded }: { slug: string; onAdded: () => void })
             </>
           )}
         </form>
+      ) : null}
+    </Card>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* OPML                                                                        */
+/* -------------------------------------------------------------------------- */
+
+/** Past this many feeds, adding them all switched on would change what a run costs. */
+const LARGE_IMPORT = 40;
+
+/**
+ * Feeds in and out in the format every reader speaks.
+ *
+ * This is what keeps the app from being a trap: a subscription list built up
+ * over years arrives in one file, and leaves in one file.
+ */
+function OpmlCard({ slug, onImported }: { slug: string; onImported: () => void }) {
+  const { config } = useConfig();
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  const [filename, setFilename] = useState("");
+  const [opml, setOpml] = useState("");
+  const [enabled, setEnabled] = useState(true);
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState<ApiError | null>(null);
+  const [result, setResult] = useState<OpmlImportResponse | null>(null);
+
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<ApiError | null>(null);
+  const [skipped, setSkipped] = useState<string[] | null>(null);
+
+  // Counted in the browser so the warning arrives before the import, not after.
+  // An xmlUrl is what makes an outline a feed, so counting them counts feeds.
+  const feedsInFile = useMemo(() => (opml.match(/xmlUrl\s*=/gi) ?? []).length, [opml]);
+
+  const kindLabel = useCallback(
+    (kind: string) => config?.source_kinds.find((entry) => entry.kind === kind)?.label ?? kind,
+    [config],
+  );
+
+  const download = () => {
+    if (exporting) return;
+    setExporting(true);
+    setExportError(null);
+    setSkipped(null);
+    api
+      .sourcesOpml(slug)
+      .then((file) => {
+        saveBlob(file.blob, file.filename);
+        setSkipped(file.skippedKinds);
+      })
+      .catch((cause: unknown) => setExportError(toApiError(cause)))
+      .finally(() => setExporting(false));
+  };
+
+  const choose = (file: File | null) => {
+    setImportError(null);
+    setResult(null);
+    if (!file) {
+      setFilename("");
+      setOpml("");
+      return;
+    }
+    setFilename(file.name);
+    file
+      .text()
+      .then(setOpml)
+      .catch(() => {
+        setOpml("");
+        setImportError(
+          new ApiError(`${file.name} could not be read.`, {
+            hint: "Pick the file again, or export a fresh one from your reader.",
+          }),
+        );
+      });
+  };
+
+  const upload = () => {
+    if (importing || !opml.trim()) return;
+    setImporting(true);
+    setImportError(null);
+    setResult(null);
+    api
+      .importOpml(slug, { opml, enabled })
+      .then((response) => {
+        setResult(response);
+        onImported();
+      })
+      .catch((cause: unknown) => setImportError(toApiError(cause)))
+      .finally(() => setImporting(false));
+  };
+
+  const clear = () => {
+    setFilename("");
+    setOpml("");
+    setResult(null);
+    setImportError(null);
+    if (fileInput.current) fileInput.current.value = "";
+  };
+
+  return (
+    <Card className="p-4 sm:p-5">
+      <h2 className="text-base font-semibold tracking-tight">Move a subscription list</h2>
+      <p className="mt-1 text-sm text-muted">
+        OPML is the file every feed reader imports and exports. Bring years of subscriptions in
+        with one, or take this workspace&apos;s sources out with one.
+      </p>
+
+      <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-6">
+        <div className="sm:flex-1">
+          <h3 className="text-sm font-semibold">Take them out</h3>
+          <p className="mt-1 text-xs text-muted">
+            Every feed shaped source in this workspace, as one file.
+          </p>
+          <div className="mt-2">
+            <Button variant="secondary" size="sm" onClick={download} loading={exporting}>
+              Download OPML
+            </Button>
+          </div>
+        </div>
+
+        <div className="sm:flex-1">
+          <h3 className="text-sm font-semibold">Bring them in</h3>
+          <p className="mt-1 text-xs text-muted">
+            Choose an .opml or .xml file exported from another reader.
+          </p>
+          <input
+            ref={fileInput}
+            type="file"
+            accept=".opml,.xml,text/xml,application/xml,text/x-opml"
+            aria-label="OPML file to import"
+            onChange={(event) => choose(event.target.files?.[0] ?? null)}
+            className="mt-2 block w-full text-sm text-muted file:mr-3 file:rounded-lg file:border file:border-line file:bg-surface file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-ink hover:file:bg-raised"
+          />
+        </div>
+      </div>
+
+      {exportError ? (
+        <div className="mt-3">
+          <ErrorState error={exportError} compact />
+        </div>
+      ) : null}
+
+      {skipped ? (
+        <div className="mt-3">
+          {skipped.length > 0 ? (
+            <Notice tone="warn" title="Some sources are not in that file">
+              {skipped.map(kindLabel).join(", ")} could not be written. OPML describes a feed by
+              its address and nothing else, and these kinds have no address to give: a Google
+              News query or a subreddit is a search this app runs, not a feed another reader
+              could subscribe to. They are still here, they just do not travel.
+            </Notice>
+          ) : (
+            <Notice tone="ok" title="Saved">
+              Every source in this workspace is in that file.
+            </Notice>
+          )}
+        </div>
+      ) : null}
+
+      {opml ? (
+        <div className="mt-4 rounded-lg border border-line p-3">
+          <p className="text-sm font-medium break-anywhere">{filename}</p>
+          <p className="mt-0.5 text-xs text-muted">
+            {feedsInFile > 0
+              ? `${plural(feedsInFile, "feed")} in the file.`
+              : "No feeds found in that file. The backend will say for certain."}
+          </p>
+
+          <div className="mt-3">
+            <Toggle
+              checked={enabled}
+              onChange={setEnabled}
+              label="Start these sources switched on"
+              description={
+                "Off, they are added disabled and collect nothing until you turn each one on. " +
+                "That is the safer way to bring in a long list, because every enabled source is " +
+                "fetched on every run."
+              }
+            />
+          </div>
+
+          {feedsInFile >= LARGE_IMPORT && enabled ? (
+            <div className="mt-3">
+              <Notice tone="warn" title="That is a lot of feeds to switch on at once">
+                {plural(feedsInFile, "feed")} fetched on every run will make runs slower and, if
+                a model is doing the summarising, dearer. Consider adding them switched off and
+                turning on the ones you actually read.
+              </Notice>
+            </div>
+          ) : null}
+
+          <p className="mt-3 text-xs text-muted">
+            Importing the same file twice is safe. A feed already here is counted as already
+            present rather than added again, so nothing is duplicated.
+          </p>
+
+          {importError ? (
+            <div className="mt-3">
+              <ErrorState error={importError} compact />
+            </div>
+          ) : null}
+
+          {result ? (
+            <div className="mt-3">
+              <Notice
+                tone={result.added > 0 ? "ok" : "neutral"}
+                title={
+                  result.added > 0
+                    ? `Added ${plural(result.added, "source")}`
+                    : "Nothing new to add"
+                }
+              >
+                <ul className="flex flex-col gap-0.5">
+                  <li>{plural(result.total_in_file, "feed")} in the file.</li>
+                  <li>{plural(result.added, "source")} added to this workspace.</li>
+                  <li>
+                    {plural(result.already_present, "feed")} already here, so nothing was
+                    duplicated.
+                  </li>
+                  <li>
+                    {plural(result.skipped, "entry", "entries")} skipped, having no feed address
+                    to subscribe to.
+                  </li>
+                </ul>
+              </Notice>
+            </div>
+          ) : null}
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button variant="primary" onClick={upload} loading={importing} disabled={!opml.trim()}>
+              {result ? "Import again" : "Import these feeds"}
+            </Button>
+            <Button variant="ghost" onClick={clear}>
+              Clear
+            </Button>
+          </div>
+        </div>
       ) : null}
     </Card>
   );

@@ -4,10 +4,10 @@ import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
 
 import { EmptyState, ErrorState, SkeletonCards } from "@/components/states";
-import { Badge, Button, Card, Select, SectionHeading } from "@/components/ui";
+import { Badge, Button, Card, Notice, Select, SectionHeading } from "@/components/ui";
 import { linkButtonClass } from "@/lib/classes";
 import { ApiError, api, toApiError } from "@/lib/api";
-import { absoluteDateTime, compactNumber, humanise, money } from "@/lib/format";
+import { absoluteDateTime, compactNumber, cost, humanise, money, plural } from "@/lib/format";
 import { useAsync } from "@/lib/hooks";
 import type { Usage, UsageRow, UsageRun, Workspace } from "@/lib/types";
 
@@ -15,11 +15,20 @@ const ALL = "__all__";
 
 interface CombinedUsage {
   total: number;
+  /** Calls the backend could not put a price on, across every workspace read. */
+  unpriced: number;
   rows: UsageRow[];
   runs: Array<UsageRun & { workspace: string }>;
   failures: Array<{ workspace: string; error: ApiError }>;
 }
 
+/**
+ * Fold the same provider, model and kind together across workspaces.
+ *
+ * A null cost means that model has no published price, so it stays null rather
+ * than being added in as a zero: a row that was never priced must not come out
+ * of the merge looking as though it was free.
+ */
 function mergeRows(rows: UsageRow[]): UsageRow[] {
   const merged = new Map<string, UsageRow>();
   for (const row of rows) {
@@ -32,9 +41,15 @@ function mergeRows(rows: UsageRow[]): UsageRow[] {
     existing.calls += row.calls ?? 0;
     existing.input_tokens += row.input_tokens ?? 0;
     existing.output_tokens += row.output_tokens ?? 0;
-    existing.cost_usd += row.cost_usd ?? 0;
+    existing.unpriced_calls += row.unpriced_calls ?? 0;
+    existing.priced = existing.priced && row.priced;
+    existing.cost_usd =
+      existing.cost_usd === null || row.cost_usd === null
+        ? null
+        : existing.cost_usd + row.cost_usd;
   }
-  return Array.from(merged.values()).sort((a, b) => b.cost_usd - a.cost_usd);
+  // Unpriced rows have no place on a scale of money, so they sit at the bottom.
+  return Array.from(merged.values()).sort((a, b) => (b.cost_usd ?? -1) - (a.cost_usd ?? -1));
 }
 
 export default function UsagePage() {
@@ -56,7 +71,7 @@ export default function UsagePage() {
   const loadUsage = useCallback(
     async (signal: AbortSignal): Promise<CombinedUsage> => {
       if (slugs.length === 0) {
-        return { total: 0, rows: [], runs: [], failures: [] };
+        return { total: 0, unpriced: 0, rows: [], runs: [], failures: [] };
       }
       const settled = await Promise.all(
         slugs.map(async (slug) => {
@@ -74,6 +89,7 @@ export default function UsagePage() {
       const runs: Array<UsageRun & { workspace: string }> = [];
       const failures: Array<{ workspace: string; error: ApiError }> = [];
       let total = 0;
+      let unpriced = 0;
 
       for (const entry of settled) {
         if (entry.error || !entry.usage) {
@@ -81,6 +97,7 @@ export default function UsagePage() {
           continue;
         }
         total += entry.usage.total_cost_usd ?? 0;
+        unpriced += entry.usage.unpriced_calls ?? 0;
         rows.push(...(entry.usage.by_provider ?? []));
         for (const run of entry.usage.recent_runs ?? []) {
           runs.push({ ...run, workspace: entry.slug });
@@ -93,14 +110,14 @@ export default function UsagePage() {
         return right - left;
       });
 
-      return { total, rows: mergeRows(rows), runs: runs.slice(0, 20), failures };
+      return { total, unpriced, rows: mergeRows(rows), runs: runs.slice(0, 20), failures };
     },
     [slugs],
   );
 
   const usageState = useAsync(loadUsage, [slugKey]);
   const usage = usageState.data;
-  const maxCost = usage ? Math.max(...usage.rows.map((row) => row.cost_usd), 0) : 0;
+  const maxCost = usage ? Math.max(...usage.rows.map((row) => row.cost_usd ?? 0), 0) : 0;
 
   return (
     <div className="flex flex-col gap-6">
@@ -169,6 +186,15 @@ export default function UsagePage() {
             <p className="mt-2 text-xs text-muted">
               Local providers cost nothing and are metered at zero.
             </p>
+            {usage.unpriced > 0 ? (
+              <div className="mt-3">
+                <Notice tone="warn" title="This total is not the whole bill">
+                  {plural(usage.unpriced, "call")} ran on a model with no published price, so
+                  nothing could be charged for them and they are left out of the figure above.
+                  Whatever they cost is not zero, it is unknown.
+                </Notice>
+              </div>
+            ) : null}
           </Card>
 
           {usage.failures.length > 0 ? (
@@ -241,6 +267,14 @@ export default function UsagePage() {
                         </td>
                         <td className="py-2.5 pr-3 text-right tabular-nums">
                           {compactNumber(row.calls)}
+                          {row.cost_usd !== null && row.unpriced_calls > 0 ? (
+                            <span
+                              className="block text-xs font-normal text-warn"
+                              title="These calls are in the count but not in the cost."
+                            >
+                              {compactNumber(row.unpriced_calls)} unpriced
+                            </span>
+                          ) : null}
                         </td>
                         <td className="py-2.5 pr-3 text-right tabular-nums">
                           {compactNumber(row.input_tokens)}
@@ -248,20 +282,31 @@ export default function UsagePage() {
                         <td className="py-2.5 pr-3 text-right tabular-nums">
                           {compactNumber(row.output_tokens)}
                         </td>
-                        <td className="py-2.5 text-right tabular-nums">
-                          <span className="inline-flex items-center justify-end gap-2">
+                        <td className="py-2.5 text-right">
+                          {row.cost_usd === null ? (
+                            // Never $0.00: no price is published for this model,
+                            // which is not the same as the calls having been free.
                             <span
-                              aria-hidden="true"
-                              className="hidden h-1.5 rounded-full bg-accent sm:block"
-                              style={{
-                                width:
-                                  maxCost > 0
-                                    ? `${Math.max(4, Math.round((row.cost_usd / maxCost) * 56))}px`
-                                    : "4px",
-                              }}
-                            />
-                            {money(row.cost_usd)}
-                          </span>
+                              className="text-muted"
+                              title={`${plural(row.unpriced_calls || row.calls, "call")} with no published price`}
+                            >
+                              not priced
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center justify-end gap-2 tabular-nums">
+                              <span
+                                aria-hidden="true"
+                                className="hidden h-1.5 rounded-full bg-accent sm:block"
+                                style={{
+                                  width:
+                                    maxCost > 0
+                                      ? `${Math.max(4, Math.round((row.cost_usd / maxCost) * 56))}px`
+                                      : "4px",
+                                }}
+                              />
+                              {cost(row.cost_usd)}
+                            </span>
+                          )}
                         </td>
                       </tr>
                     ))}

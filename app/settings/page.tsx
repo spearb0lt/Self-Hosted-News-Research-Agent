@@ -12,9 +12,11 @@ import {
   SectionHeading,
   Select,
   TextInput,
+  Toggle,
   cx,
 } from "@/components/ui";
 import { ApiError, api, toApiError } from "@/lib/api";
+import { useDisplayPrefs } from "@/lib/hooks";
 import {
   clearAllCredentials,
   clearCredential,
@@ -22,6 +24,7 @@ import {
   loadVault,
   maskKey,
   savePrefs,
+  saveDisplayPrefs,
   setCredential,
   subscribeToVault,
   type ProviderCredential,
@@ -36,9 +39,16 @@ export default function GlobalSettingsPage() {
       <div>
         <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Settings</h1>
         <p className="mt-1 max-w-prose text-sm text-muted">
-          Provider keys, the embedding model, and what this deployment can and cannot do.
+          Provider keys, the embedding model, what you want shown as you read, and what this
+          deployment can and cannot do.
         </p>
       </div>
+
+      {/* Outside everything below, because what a reader wants rendered is kept
+          in this browser and needs no backend. Gating it on /api/config would
+          mean losing the switches whenever the API is slow or down, which is
+          exactly when someone is most likely to be fiddling with settings. */}
+      <DisplayCard />
 
       {loading && !config ? (
         <SkeletonCards count={3} lines={4} />
@@ -365,6 +375,71 @@ function EmbedderCard({ embedders }: { embedders: ProviderStatus[] }) {
           </ul>
         </div>
       )}
+    </Card>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* What gets shown                                                             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A run computes more about a story than most readers want on the page at
+ * once. These switches decide what is rendered and nothing else: no run
+ * behaves differently, and no request is made, so they are kept in this
+ * browser rather than on the workspace.
+ */
+function DisplayCard() {
+  const prefs = useDisplayPrefs();
+
+  return (
+    <Card className="p-4 sm:p-6">
+      <SectionHeading
+        title="What to show as you read"
+        description="Everything the pipeline already worked out, switched on or off for this browser. Nothing here changes what a run does or costs."
+      />
+
+      <div className="flex flex-col gap-4">
+        <Toggle
+          checked={prefs.eventCommentary}
+          onChange={(value) => saveDisplayPrefs({ eventCommentary: value })}
+          label="Why an event matters, and where the accounts differ"
+          description={
+            "Two lines the model writes for each event: one on what is at stake, one on where " +
+            "the outlets do not tell the same story. Both are often empty, and an empty one is " +
+            "never shown."
+          }
+        />
+        <Toggle
+          checked={prefs.contested}
+          onChange={(value) => saveDisplayPrefs({ contested: value })}
+          label="Flag events the outlets told differently"
+          description={
+            "Marks an event whose outlets differed in tone by 0.8 or more, and lets you open " +
+            "which outlets carried it and how far apart they were. Grouping the same story " +
+            "across mastheads is what makes this comparison possible at all."
+          }
+        />
+        <Toggle
+          checked={prefs.articleTone}
+          onChange={(value) => saveDisplayPrefs({ articleTone: value })}
+          label="Tone and stance on each article"
+          description={
+            "Whether an article reads negative, neutral or positive, and whether it reports, " +
+            "argues for its subject, argues against it, or does both. Only articles that have " +
+            "been through enrichment carry either."
+          }
+        />
+        <Toggle
+          checked={prefs.entities}
+          onChange={(value) => saveDisplayPrefs({ entities: value })}
+          label="The most covered people, organisations and places"
+          description={
+            "A panel on the digest ranking the names that came up most in a window, filterable " +
+            "by kind. Empty for a workspace whose runs have not enriched anything yet."
+          }
+        />
+      </div>
     </Card>
   );
 }

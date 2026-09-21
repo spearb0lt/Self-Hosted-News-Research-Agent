@@ -993,10 +993,27 @@ def top_entities(
         """,
         [*params, since_iso, int(limit)],
     )
-    return [
-        {"id": int(r["id"]), "name": r["name"], "kind": r["kind"], "count": int(r["recent"])}
-        for r in rows
-    ]
+    # Filtered on the way out rather than on the way in. The entity table holds
+    # rows from an earlier, looser heuristic that ran over headlines, where
+    # Title Case made almost every word look like a name. Deleting those was
+    # tempting and wrong: any rule sharp enough to catch "Sept" and "Current"
+    # also caught real entries like "The Verge's Nilay Patel", so the junk is
+    # hidden here and superseded as new runs write better rows.
+    from ..pipeline.enrich import plausible_entity_name
+
+    out = []
+    for r in rows:
+        name = r["name"]
+        kind = r["kind"] or "other"
+        count = int(r["recent"])
+        # A kind the model assigned is evidence in itself, so those are kept
+        # whatever they look like. An untyped row has to look like a name, and
+        # being seen twice does not make it one: "Current" and "PT. Join" both
+        # appeared twice.
+        if kind == "other" and not plausible_entity_name(name):
+            continue
+        out.append({"id": int(r["id"]), "name": name, "kind": kind, "count": count})
+    return out
 
 
 # ----------------------------------------------------------------- digests

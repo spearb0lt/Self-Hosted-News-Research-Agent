@@ -15,6 +15,7 @@ const VIEWS_KEY = "news-research.workspace-views.v1";
 const EVENT_SORT_KEY = "news-research.event-sort.v1";
 const ARTICLE_SORT_KEY = "news-research.article-sort.v1";
 const RESEARCH_SORT_KEY = "news-research.research-sort.v1";
+const DISPLAY_KEY = "news-research.display.v1";
 
 /** What the user pasted for one provider. */
 export interface ProviderCredential {
@@ -184,6 +185,101 @@ export function savePrefs(next: Prefs): void {
     // Same as above: a blocked store costs a preference, not the page.
   }
   notify();
+}
+
+/* -------------------------------------------------------------------------- */
+/* What the reader wants shown                                                 */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Which of the pipeline's extra readings are rendered.
+ *
+ * These are display choices, not settings: nothing here changes what a run
+ * computes or what the backend stores, so they live in this browser alongside
+ * the sort orders rather than on the workspace.
+ */
+export interface DisplayPrefs {
+  /** The model's one line on why an event matters, and where accounts differ. */
+  eventCommentary: boolean;
+  /** The contested badge and the outlet spread behind it. */
+  contested: boolean;
+  /** Tone and stance on an article. */
+  articleTone: boolean;
+  /** The most mentioned people, organisations and places. */
+  entities: boolean;
+}
+
+/** Everything on. A reader who wants less turns it off in /settings. */
+export const DISPLAY_DEFAULTS: DisplayPrefs = {
+  eventCommentary: true,
+  contested: true,
+  articleTone: true,
+  entities: true,
+};
+
+export function loadDisplayPrefs(): DisplayPrefs {
+  if (!canStore()) return DISPLAY_DEFAULTS;
+  let raw: string | null = null;
+  try {
+    raw = window.localStorage.getItem(DISPLAY_KEY);
+  } catch {
+    return DISPLAY_DEFAULTS;
+  }
+  if (!raw) return DISPLAY_DEFAULTS;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return DISPLAY_DEFAULTS;
+  }
+  if (!isRecord(parsed)) return DISPLAY_DEFAULTS;
+
+  // Each field is read one at a time so a key written by a later version, or a
+  // value that is not a boolean, falls back to the default rather than through.
+  const prefs = { ...DISPLAY_DEFAULTS };
+  for (const field of Object.keys(DISPLAY_DEFAULTS) as Array<keyof DisplayPrefs>) {
+    if (typeof parsed[field] === "boolean") prefs[field] = parsed[field];
+  }
+  return prefs;
+}
+
+export function saveDisplayPrefs(next: Partial<DisplayPrefs>): void {
+  if (!canStore()) return;
+  const merged = { ...loadDisplayPrefs(), ...next };
+  try {
+    window.localStorage.setItem(DISPLAY_KEY, JSON.stringify(merged));
+  } catch {
+    // Same as the vault: a blocked store costs a preference, not the page.
+  }
+  notifyDisplay();
+}
+
+/**
+ * Display choices get their own notifier, for the same reason the research
+ * sort is kept out of Prefs: everything subscribed to the vault refetches
+ * /api/config when it fires, because a pasted key changes what that reports.
+ * Ticking a box about what to render must not go anywhere near the network.
+ */
+const displayListeners = new Set<Listener>();
+
+function notifyDisplay(): void {
+  for (const listener of displayListeners) listener();
+}
+
+export function subscribeToDisplayPrefs(listener: Listener): () => void {
+  displayListeners.add(listener);
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === DISPLAY_KEY || event.key === null) listener();
+  };
+  if (typeof window !== "undefined") {
+    window.addEventListener("storage", onStorage);
+  }
+  return () => {
+    displayListeners.delete(listener);
+    if (typeof window !== "undefined") {
+      window.removeEventListener("storage", onStorage);
+    }
+  };
 }
 
 /* -------------------------------------------------------------------------- */

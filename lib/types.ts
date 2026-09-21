@@ -83,6 +83,21 @@ export interface SourceKind {
   reason: string;
 }
 
+/**
+ * One way a finished digest can be sent onwards.
+ *
+ * `configured` is the deployment's own answer about whether the credential for
+ * this channel is present, so a channel that cannot work is shown saying so
+ * rather than failing at delivery time.
+ */
+export interface DeliveryChannel {
+  id: string;
+  label: string;
+  configured: boolean;
+  /** True when the channel needs an address or a target as well as the message. */
+  needs_target: boolean;
+}
+
 export interface Preset {
   slug: string;
   name: string;
@@ -104,6 +119,7 @@ export interface AppConfig {
   embedders: ProviderStatus[];
   source_kinds: SourceKind[];
   presets: Preset[];
+  delivery_channels: DeliveryChannel[];
 }
 
 export interface VerifyResponse {
@@ -142,6 +158,16 @@ export interface WorkspaceConfig {
   digest_bullets?: number;
   /** Absent means on. Off skips every LLM stage of a run. */
   ai_enabled?: boolean;
+  /** Absent means off. Sends the digest after a scheduled run, never after a manual one. */
+  auto_deliver?: boolean;
+  /** Channel ids from AppConfig.delivery_channels. */
+  delivery_channels?: string[];
+  /** The address or target for channels that need one. */
+  delivery_to?: string;
+  /** Absent means on. The workspace keyword lists decide what is kept at ingest. */
+  apply_keywords?: boolean;
+  /** Absent means on. A source's weight nudges where its stories rank. */
+  apply_source_weight?: boolean;
   [key: string]: JsonValue | undefined;
 }
 
@@ -235,6 +261,39 @@ export interface DiscoverResponse {
   feeds: DiscoveredFeed[];
 }
 
+export interface OpmlImportBody {
+  /** The file's text, read in the browser. The backend parses it. */
+  opml: string;
+  /** False adds every feed switched off, so a large import collects nothing yet. */
+  enabled: boolean;
+}
+
+/**
+ * Importing the same file twice is safe: a feed already attached is counted
+ * under `already_present` instead of being added again.
+ */
+export interface OpmlImportResponse {
+  added: number;
+  already_present: number;
+  /** Outlines OPML carried that are not feeds this app can subscribe to. */
+  skipped: number;
+  total_in_file: number;
+  sources: Source[];
+}
+
+/**
+ * A downloaded file and the one header the caller needs.
+ *
+ * Only the OPML export is fetched rather than linked, because the count in the
+ * file does not match the workspace's source count and only the header says why.
+ */
+export interface DownloadedFile {
+  blob: Blob;
+  filename: string;
+  /** Source kinds OPML has no way to describe. Empty when nothing was left out. */
+  skippedKinds: string[];
+}
+
 /* -------------------------------------------------------------------------- */
 /* Runs                                                                        */
 /* -------------------------------------------------------------------------- */
@@ -273,6 +332,12 @@ export interface StartRunBody {
 /* Content                                                                     */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * How a piece is written, as opposed to what it is about. Enrichment fills it
+ * in, so an article collected before that stage ran carries an empty string.
+ */
+export type ArticleStance = "factual" | "critical" | "supportive" | "mixed";
+
 export interface Article {
   id: Id;
   url: string;
@@ -282,10 +347,39 @@ export interface Article {
   author: string | null;
   published_at: string | null;
   theme: string | null;
-  sentiment: string | null;
+  /** A number, not a label: the backend column is REAL, roughly -1 to 1. */
+  sentiment: number | null;
+  stance: ArticleStance | "" | null;
   importance: number | null;
   image_url: string | null;
   word_count: number | null;
+}
+
+/**
+ * How the outlets covering one event compared with each other.
+ *
+ * This is the reading only a deduplicating aggregator can offer: the same story
+ * seen through several mastheads at once.
+ */
+export interface EventSpread {
+  /** Each outlet and how many of the event's articles came from it. */
+  domains: Array<[string, number]>;
+  distinct_domains: number;
+  /** Null when none of the articles were scored for tone. */
+  mean_sentiment: number | null;
+  /** The distance between the most positive and the most negative telling. */
+  sentiment_spread: number;
+  /** True once that distance reaches 0.8, the backend's threshold for disagreement. */
+  contested: boolean;
+}
+
+/** The parts of an event the model wrote that are not the summary. */
+export interface EventMeta {
+  /** One line on why this is worth a reader's time. Often empty. */
+  why_it_matters?: string;
+  /** One line on where the accounts do not line up. Often empty. */
+  disagreement?: string;
+  spread?: EventSpread;
 }
 
 export interface NewsEvent {
@@ -298,7 +392,26 @@ export interface NewsEvent {
   source_count: number;
   first_seen: string | null;
   last_seen: string | null;
+  meta: EventMeta;
   articles: Article[];
+}
+
+/* -------------------------------------------------------------------------- */
+/* Entities                                                                    */
+/* -------------------------------------------------------------------------- */
+
+export type EntityKind = "person" | "org" | "place" | "ticker" | "other";
+
+export interface Entity {
+  id: Id;
+  name: string;
+  kind: EntityKind;
+  /** How many articles in the window mentioned it. */
+  count: number;
+}
+
+export interface EntitiesResponse {
+  entities: Entity[];
 }
 
 /**
@@ -349,6 +462,9 @@ export interface Digest extends DigestSummary {
   payload: JsonObject;
 }
 
+/** What a digest can be saved as. Every one downloads as a file. */
+export type DigestExportFormat = "md" | "csv" | "json" | "pdf";
+
 export interface DeliverBody {
   channels: string[];
   to?: string;
@@ -391,6 +507,13 @@ export interface ChatResponse {
 /* Usage                                                                       */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * One provider and model's share of the bill.
+ *
+ * `cost_usd` is null when nothing is known about what that model charges. That
+ * is not the same as free, and the UI must never round it to $0.00: the row is
+ * unpriced, and the total below it excludes those calls.
+ */
 export interface UsageRow {
   provider: string;
   model: string;
@@ -398,7 +521,11 @@ export interface UsageRow {
   calls: number;
   input_tokens: number;
   output_tokens: number;
-  cost_usd: number;
+  cost_usd: number | null;
+  /** False when this model has no published price in the backend's table. */
+  priced: boolean;
+  /** How many of this row's calls went unpriced. */
+  unpriced_calls: number;
 }
 
 /**
@@ -417,7 +544,10 @@ export interface UsageRun {
 }
 
 export interface Usage {
+  /** The priced calls only. Anything unpriced is missing from this figure. */
   total_cost_usd: number;
+  /** How many calls across every row had no price to charge them at. */
+  unpriced_calls: number;
   by_provider: UsageRow[];
   recent_runs: UsageRun[];
 }

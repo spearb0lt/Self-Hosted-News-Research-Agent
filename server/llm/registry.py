@@ -80,7 +80,22 @@ def reset_registry() -> None:
 
 
 def all_status() -> list[dict[str, Any]]:
-    return [provider.status().as_dict() for provider in provider_map().values()]
+    """Every provider's status, gathered concurrently.
+
+    Each provider's status costs a network round trip: a liveness probe for a
+    local server, a model listing for a hosted one. Nineteen of those in
+    sequence made a cold /api/config take over twenty seconds. They are
+    independent, so they run together and the page waits for the slowest rather
+    than the sum.
+    """
+    from ..util import map_concurrently
+
+    return [
+        status.as_dict()
+        for status in map_concurrently(
+            lambda item: item.status(), list(provider_map().values())
+        )
+    ]
 
 
 def server_providers() -> list[str]:

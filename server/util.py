@@ -11,6 +11,7 @@ import hashlib
 import json
 import re
 import unicodedata
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
 from typing import Any
@@ -347,3 +348,72 @@ def loads(value: Any, default: Any = None) -> Any:
         return json.loads(value)
     except (TypeError, ValueError):
         return default if default is not None else {}
+
+
+def tcp_reachable(url: str, timeout: float = 0.25) -> bool:
+    """Whether something is listening on a URL's host and port.
+
+    Used before making an HTTP request to a service that is usually not
+    running, because the two cost wildly different amounts when it is absent.
+    An HTTP GET to a closed localhost port took 4 seconds here: `localhost`
+    resolves to both ::1 and 127.0.0.1 and Windows drops rather than refuses,
+    so each family burns the full timeout. The same check over a raw socket at
+    a quarter second costs 0.5 seconds, and when the port IS open it answers in
+    about 11 milliseconds either way.
+
+    That mattered: probing four local model servers made a cold /api/config
+    take over twenty seconds.
+    """
+    import socket
+
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return False
+    host = parts.hostname or "127.0.0.1"
+    port = parts.port or (443 if parts.scheme == "https" else 80)
+
+    try:
+        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except OSError:
+        return False
+
+    for family, socket_type, proto, _, address in infos:
+        sock = socket.socket(family, socket_type, proto)
+        sock.settimeout(timeout)
+        try:
+            sock.connect(address)
+            return True
+        except OSError:
+            continue
+        finally:
+            sock.close()
+    return False
+
+
+def map_concurrently(function: Callable[[Any], Any], items: Sequence[Any],
+                     *, max_workers: int = 12) -> list:
+    """Run an independent call per item in parallel, preserving context.
+
+    Thread pool workers do NOT inherit the caller's context variables, and this
+    project keeps each request's own API keys in one. Mapping provider status
+    across a plain pool therefore reported every bring your own key provider as
+    unavailable: the key was bound on the request thread and invisible in the
+    worker. A separate copy of the calling context is taken per task here, in
+    the calling thread, because one Context cannot be entered by two threads at
+    once.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+    from contextvars import copy_context
+
+    items = list(items)
+    if not items:
+        return []
+    if len(items) == 1:
+        return [function(items[0])]
+
+    contexts = [copy_context() for _ in items]
+    with ThreadPoolExecutor(max_workers=min(len(items), max_workers)) as pool:
+        return list(
+            pool.map(lambda pair: pair[0].run(function, pair[1]), zip(contexts, items, strict=True))
+        )

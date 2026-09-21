@@ -20,12 +20,18 @@ import type {
   DeliverResponse,
   Digest,
   DigestSummary,
+  DigestExportFormat,
   DiscoverResponse,
+  DownloadedFile,
+  EntitiesResponse,
+  EntityKind,
   EventSort,
   EventsResponse,
   HealthResponse,
   Id,
   JsonObject,
+  OpmlImportBody,
+  OpmlImportResponse,
   ResearchBackendsResponse,
   ResearchBody,
   ResearchResponse,
@@ -160,6 +166,17 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   return payload as T;
 }
 
+/**
+ * Read a filename out of a Content-Disposition header, falling back to one the
+ * caller chose. The backend always sends the quoted form, but a proxy is free
+ * to rewrite the header, and a download with no name is worse than a guess.
+ */
+function filenameFrom(header: string | null, fallback: string): string {
+  if (!header) return fallback;
+  const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(header);
+  return match?.[1] ? decodeURIComponent(match[1]) : fallback;
+}
+
 /* -------------------------------------------------------------------------- */
 /* Endpoints                                                                   */
 /* -------------------------------------------------------------------------- */
@@ -211,6 +228,13 @@ export const api = {
   deleteSource: (id: Id, signal?: AbortSignal) =>
     request<void>(`/api/sources/${encodeURIComponent(String(id))}`, { method: "DELETE", signal }),
 
+  importOpml: (slug: string, body: OpmlImportBody, signal?: AbortSignal) =>
+    request<OpmlImportResponse>(`/api/workspaces/${encodeURIComponent(slug)}/sources/opml`, {
+      method: "POST",
+      body,
+      signal,
+    }),
+
   discover: (slug: string, url: string, signal?: AbortSignal) =>
     request<DiscoverResponse>(`/api/workspaces/${encodeURIComponent(slug)}/discover`, {
       method: "POST",
@@ -258,6 +282,16 @@ export const api = {
     signal?: AbortSignal,
   ) =>
     request<ArticlesResponse>(`/api/workspaces/${encodeURIComponent(slug)}/articles`, {
+      query,
+      signal,
+    }),
+
+  entities: (
+    slug: string,
+    query: { kind?: EntityKind | ""; hours?: number } = {},
+    signal?: AbortSignal,
+  ) =>
+    request<EntitiesResponse>(`/api/workspaces/${encodeURIComponent(slug)}/entities`, {
       query,
       signal,
     }),
@@ -311,7 +345,82 @@ export const api = {
     request<Usage>(`/api/workspaces/${encodeURIComponent(slug)}/usage`, { signal }),
 
   feedUrl: (slug: string) => `/api/workspaces/${encodeURIComponent(slug)}/feed.xml`,
+
+  /* ------------------------------------------------------------------------ */
+  /* Downloads                                                                 */
+  /* ------------------------------------------------------------------------ */
+
+  // These answer with a file and a Content-Disposition, so they are given to
+  // the browser as an address rather than fetched and turned back into one.
+  // A link streams, survives a large export, and needs no memory of its own.
+
+  digestExportUrl: (id: Id, format: DigestExportFormat) =>
+    `/api/digests/${encodeURIComponent(String(id))}/export?format=${format}`,
+
+  articlesCsvUrl: (slug: string, query: { limit?: number; include_duplicates?: boolean } = {}) =>
+    withQuery(`/api/workspaces/${encodeURIComponent(slug)}/articles.csv`, {
+      limit: query.limit,
+      include_duplicates: query.include_duplicates,
+    }),
+
+  sourcesOpmlUrl: (slug: string) => `/api/workspaces/${encodeURIComponent(slug)}/sources.opml`,
+
+  /**
+   * The one download that is fetched rather than linked.
+   *
+   * OPML describes a feed by its xmlUrl alone, so a Google News query or a
+   * subreddit cannot be written into the file. Which kinds were left behind is
+   * only in the X-Skipped-Kinds header, and a header is unreadable from a link.
+   */
+  async sourcesOpml(slug: string, signal?: AbortSignal): Promise<DownloadedFile> {
+    const url = `/api/workspaces/${encodeURIComponent(slug)}/sources.opml`;
+    let response: Response;
+    try {
+      response = await fetch(url, { cache: "no-store", signal });
+    } catch (cause) {
+      if (cause instanceof DOMException && cause.name === "AbortError") throw cause;
+      throw new ApiError("Could not reach the backend.", {
+        hint: "The API did not answer, so there is no file to save.",
+      });
+    }
+    if (!response.ok) {
+      const text = await response.text();
+      let payload: unknown = null;
+      try {
+        payload = JSON.parse(text);
+      } catch {
+        payload = null;
+      }
+      throw readErrorPayload(payload, response.status);
+    }
+    const skipped = (response.headers.get("X-Skipped-Kinds") ?? "")
+      .split(",")
+      .map((kind) => kind.trim())
+      .filter(Boolean);
+    return {
+      blob: await response.blob(),
+      filename: filenameFrom(response.headers.get("Content-Disposition"), `${slug}.opml`),
+      skippedKinds: skipped,
+    };
+  },
 };
+
+/**
+ * Hand a fetched file to the browser as a download.
+ *
+ * The object URL is revoked on the next frame rather than immediately, because
+ * a click on a freshly created link has not necessarily been dispatched yet.
+ */
+export function saveBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
 
 /** Narrow an unknown caught value into something with a message and a hint. */
 export function toApiError(cause: unknown): ApiError {

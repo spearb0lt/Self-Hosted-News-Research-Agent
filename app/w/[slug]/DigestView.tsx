@@ -3,15 +3,16 @@
 import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
 
+import { EntityLeaderboard } from "@/components/EntityLeaderboard";
 import { RunBar } from "@/components/RunBar";
 import { EmptyState, ErrorState, SkeletonCards } from "@/components/states";
 import { Badge, Button, Card, SegmentedControl, cx, type Segment } from "@/components/ui";
 import { linkButtonClass } from "@/lib/classes";
 import { api } from "@/lib/api";
 import { absoluteDateTime, hostOf, plural, relativeTime, themeLabel } from "@/lib/format";
-import { useAsync } from "@/lib/hooks";
-import { loadEventSort, saveEventSort } from "@/lib/keys";
-import type { Article, EventSort, NewsEvent, Theme } from "@/lib/types";
+import { useAsync, useDisplayPrefs } from "@/lib/hooks";
+import { loadEventSort, saveEventSort, type DisplayPrefs } from "@/lib/keys";
+import type { Article, EventSort, EventSpread, NewsEvent, Theme } from "@/lib/types";
 
 const PAGE_SIZE = 60;
 const UNGROUPED = "";
@@ -38,6 +39,7 @@ export function DigestView({ slug }: { slug: string }) {
   // Read straight out of storage, as in RawView: this view only ever mounts in
   // the browser, after WorkspaceHome has resolved its own stored choice.
   const [sort, setSort] = useState<EventSort>(() => loadEventSort(slug) ?? "importance");
+  const display = useDisplayPrefs();
 
   const chooseSort = (next: EventSort) => {
     setSort(next);
@@ -146,6 +148,8 @@ export function DigestView({ slug }: { slug: string }) {
         </div>
       ) : null}
 
+      {display.entities ? <EntityLeaderboard slug={slug} /> : null}
+
       {initialising ? (
         <SkeletonCards count={4} lines={3} />
       ) : error ? (
@@ -195,7 +199,7 @@ export function DigestView({ slug }: { slug: string }) {
               </div>
               <ul className="flex flex-col gap-3">
                 {group.events.map((event) => (
-                  <EventCard key={String(event.id)} event={event} />
+                  <EventCard key={String(event.id)} event={event} display={display} />
                 ))}
               </ul>
             </section>
@@ -235,16 +239,31 @@ function ThemeChip({
   );
 }
 
-function EventCard({ event }: { event: NewsEvent }) {
+function EventCard({ event, display }: { event: NewsEvent; display: DisplayPrefs }) {
   const [expanded, setExpanded] = useState(false);
   const articles = event.articles ?? [];
   const visible = expanded ? articles : articles.slice(0, 3);
+
+  // An empty string is the common case for both of these, so each one is asked
+  // about separately rather than the pair being rendered as a block.
+  const meta = event.meta ?? {};
+  const whyItMatters = display.eventCommentary ? (meta.why_it_matters ?? "").trim() : "";
+  const disagreement = display.eventCommentary ? (meta.disagreement ?? "").trim() : "";
+  const spread = display.contested ? (meta.spread ?? null) : null;
 
   return (
     <Card as="li" className="p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <h4 className="min-w-0 flex-1 text-base font-semibold break-anywhere">{event.title}</h4>
         <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+          {spread?.contested ? (
+            <Badge
+              tone="warn"
+              title={`Outlets covering this differed in tone by ${spread.sentiment_spread.toFixed(2)}`}
+            >
+              Contested
+            </Badge>
+          ) : null}
           <Badge
             tone="neutral"
             title={`${event.source_count} distinct sources covered this`}
@@ -262,6 +281,29 @@ function EventCard({ event }: { event: NewsEvent }) {
       {event.summary ? (
         <p className="mt-2 text-sm leading-relaxed text-ink/90 break-anywhere">{event.summary}</p>
       ) : null}
+
+      {whyItMatters || disagreement ? (
+        <dl className="mt-3 flex flex-col gap-2">
+          {whyItMatters ? (
+            <div className="rounded-r-lg border-l-2 border-accent bg-accent-soft px-3 py-2">
+              <dt className="text-xs font-semibold tracking-wide text-accent uppercase">
+                Why it matters
+              </dt>
+              <dd className="mt-0.5 text-sm text-ink/90 break-anywhere">{whyItMatters}</dd>
+            </div>
+          ) : null}
+          {disagreement ? (
+            <div className="rounded-r-lg border-l-2 border-warn bg-warn-soft px-3 py-2">
+              <dt className="text-xs font-semibold tracking-wide text-warn uppercase">
+                Where the accounts differ
+              </dt>
+              <dd className="mt-0.5 text-sm text-ink/90 break-anywhere">{disagreement}</dd>
+            </div>
+          ) : null}
+        </dl>
+      ) : null}
+
+      {spread ? <SpreadPanel spread={spread} /> : null}
 
       <p className="mt-2 text-xs text-faint">
         {event.first_seen ? <>first seen {relativeTime(event.first_seen)}</> : null}
@@ -289,6 +331,97 @@ function EventCard({ event }: { event: NewsEvent }) {
         </ul>
       ) : null}
     </Card>
+  );
+}
+
+/**
+ * How the same story read across the outlets that carried it.
+ *
+ * Deduplicating is what earns this panel: a single feed can only ever show one
+ * telling, so the comparison is the thing this app can say and a reader cannot
+ * get anywhere else. It is offered whenever more than one outlet covered the
+ * event, and says so loudly once their tone is far enough apart to be contested.
+ */
+function SpreadPanel({ spread }: { spread: EventSpread }) {
+  const [open, setOpen] = useState(false);
+  const domains = spread.domains ?? [];
+  if (!spread.contested && spread.distinct_domains < 2) return null;
+
+  const busiest = domains[0]?.[1] ?? 0;
+
+  return (
+    <div
+      className={cx(
+        "mt-3 rounded-lg border px-3 py-2",
+        spread.contested ? "border-warn bg-warn-soft" : "border-line",
+      )}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+        className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-md text-left"
+      >
+        <span
+          className={cx(
+            "text-sm font-semibold",
+            spread.contested ? "text-warn" : "text-ink",
+          )}
+        >
+          {spread.contested
+            ? "Outlets told this differently"
+            : `Carried by ${plural(spread.distinct_domains, "outlet")}`}
+        </span>
+        <span className="ml-auto text-sm font-medium text-accent underline underline-offset-2">
+          {open ? "Hide the spread" : "See the spread"}
+        </span>
+      </button>
+
+      {spread.contested ? (
+        <p className="mt-1 text-sm text-ink/85">
+          Their tone was {spread.sentiment_spread.toFixed(2)} apart, past the 0.8 this pipeline
+          treats as real disagreement rather than house style.
+        </p>
+      ) : null}
+
+      {open ? (
+        <div className="mt-3 border-t border-line pt-3">
+          <ul className="flex flex-col gap-1.5">
+            {domains.map(([domain, count]) => (
+              <li key={domain} className="flex items-center gap-x-3 text-sm">
+                <span className="min-w-0 flex-1 break-anywhere">{domain}</span>
+                <span className="flex shrink-0 items-center gap-2">
+                  <span
+                    aria-hidden="true"
+                    className="h-1.5 rounded-full bg-accent"
+                    style={{
+                      width:
+                        busiest > 0 ? `${Math.max(4, Math.round((count / busiest) * 48))}px` : "4px",
+                    }}
+                  />
+                  <span className="w-6 text-right tabular-nums text-muted">{count}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+
+          <dl className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted">
+            <div className="flex gap-1">
+              <dt>Tone spread</dt>
+              <dd className="font-medium text-ink tabular-nums">
+                {spread.sentiment_spread.toFixed(2)}
+              </dd>
+            </div>
+            <div className="flex gap-1">
+              <dt>Average tone</dt>
+              <dd className="font-medium text-ink tabular-nums">
+                {spread.mean_sentiment === null ? "not scored" : spread.mean_sentiment.toFixed(2)}
+              </dd>
+            </div>
+          </dl>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
