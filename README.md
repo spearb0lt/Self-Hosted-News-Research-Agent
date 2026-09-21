@@ -9,16 +9,21 @@ It runs with **no API keys at all**. Deduplication uses a 23 MB sentence
 encoder bundled into the deployment, not a hosted service. Adding one LLM key
 upgrades the digest from headlines to written summaries.
 
+![The digest, with events grouped under the workspace's own themes](docs/images/digest.png)
+
 ---
 
 ## Contents
 
 - [What it actually does](#what-it-actually-does)
 - [Quick start](#quick-start)
+- [Reading a beat](#reading-a-beat)
+- [Researching one topic](#researching-one-topic)
+- [Getting the digest out](#getting-the-digest-out)
 - [Deploying](#deploying)
 - [How deduplication works](#how-deduplication-works)
 - [Sources](#sources)
-- [Providers](#providers)
+- [Providers and keys](#providers-and-keys)
 - [Configuration](#configuration)
 - [Command line](#command-line)
 - [Tuning and evaluation](#tuning-and-evaluation)
@@ -29,7 +34,7 @@ upgrades the digest from headlines to written summaries.
 
 ## What it actually does
 
-The pipeline has nine stages. Each one is bounded and resumable, which is what
+The pipeline has ten stages. Each one is bounded and resumable, which is what
 lets the whole thing run inside a 300 second serverless function as well as on
 a machine with no time limit.
 
@@ -40,13 +45,23 @@ embed     turn each article into a vector
 dedup     drop articles that are the same story as one already held
 cluster   group the survivors into events, one event per real world happening
 classify  assign each event a theme from this workspace's own taxonomy
-summarise write two factual sentences per event from its coverage
+summarise write a short factual account of each event from its coverage
 digest    assemble the bullets, Markdown, HTML and JSON
 enrich    entities, sentiment and stance (optional, runs last on purpose)
+deliver   email, Slack, Discord, Telegram or a webhook, when you ask for it
 ```
 
 A **workspace** is one beat: its own sources, its own theme taxonomy, its own
 schedule. Eight presets ship ready to use, every feed in them verified live.
+
+One real run of the shipped `global-tech` preset against the live web:
+
+```
+8 sources, 7 answered       100 articles seen, 98 new
+67 full texts extracted     101 embedded
+89 events                   89 summarised
+digest: 6 bullets across 7 themed sections
+```
 
 ---
 
@@ -55,15 +70,15 @@ schedule. Eight presets ship ready to use, every feed in them verified live.
 Requires Python 3.12 and Node 20 or newer.
 
 ```bash
-git clone <your-repo> newsroom && cd newsroom
+git clone https://github.com/spearb0lt/News-Research.git newsroom && cd newsroom
 
 python -m venv .venv
-.venv/bin/activate            # Windows: .venv\Scripts\activate
+source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-python scripts/fetch_model.py # 23 MB, the local encoder
+python scripts/fetch_model.py  # 23 MB, the local encoder
 
 npm install
-cp .env.example .env          # optional, it runs without one
+cp .env.example .env           # optional, it runs without one
 ```
 
 Two terminals:
@@ -74,6 +89,8 @@ npm run dev                                    # frontend on :3000
 ```
 
 Open <http://localhost:3000>, pick a preset, press **Run now**.
+
+![The workspace list](docs/images/home.png)
 
 Or skip the browser entirely:
 
@@ -88,6 +105,99 @@ Check what your machine can do at any point:
 ```bash
 python -m server.ops.cli doctor
 ```
+
+> Do not run `npm run build` while `npm run dev` is running. Both write to
+> `.next`, and the production build replaces chunks the dev server still holds
+> open. If you see `Cannot find module './331.js'`, stop both and remove
+> `.next`.
+
+---
+
+## Reading a beat
+
+Every workspace has the same five tabs.
+
+**Digest** is the default: events grouped under the workspace's own themes,
+each showing which outlets carried it, when it was first seen, and where the
+accounts diverge. Sort by top stories, newest or oldest.
+
+![The same digest in dark mode](docs/images/digest-dark.png)
+
+**Raw** is the same window with no editorial layer: every article, numbered,
+sorted by date, deduplicated but not summarised. Switch it per view, or set
+`ai_enabled: false` on the workspace to make it permanent. A raw workspace never
+calls a language model, so it costs nothing and needs no key. Deduplication
+still runs, because that is the part that uses the local encoder.
+
+![The article list, with sort and export controls](docs/images/articles.png)
+
+**Sources** lists what the beat reads, with each source's last result and its
+error if it has one. Paste any website address and it finds that site's feeds
+for you. OPML imports and exports here, so a reader's whole subscription list
+moves in one step.
+
+**Chat** answers questions against what this workspace has actually collected
+and quotes the articles it used. It retrieves by embedding similarity over the
+stored text, so it can only tell you what the beat ingested.
+
+**Settings** holds the theme taxonomy, the keyword rules, the display toggles
+and automatic delivery.
+
+### Keywords
+
+Each workspace carries three lists. **Exclude** drops a story at ingest, before
+anything is spent on it. **Boost** lifts a story up the digest without hiding
+anyone else's. **Include** is a whitelist: when it is not empty, everything that
+does not match it is dropped.
+
+The shipped presets use exclude and boost only. An include list layered on top
+of feeds that are already topical throws away most of the beat, which is worth
+knowing before you add one.
+
+---
+
+## Researching one topic
+
+The digest answers "what happened on my beat today". Research answers "what is
+there about this, right now", without creating a workspace first.
+
+![A research run, showing every backend that answered](docs/images/research.png)
+
+It fans out across every usable backend at once, Google News plus each search
+provider you hold a key for, merges the duplicates, fetches the article text,
+and ranks what is left against the query. Two modes:
+
+- **Just the articles.** Ranked, deduplicated and numbered. No model is called,
+  so this needs no AI key at all.
+- **Written brief.** A short cited summary over the top results, with the same
+  numbered list underneath it.
+
+Results sort by relevance, newest or oldest. Relevance always decides which
+results make the list; the date options re-order those same results rather than
+fetching whatever happened to be published most recently.
+
+**Save as workspace** turns a search into a daily beat, built from the outlets
+that actually answered it.
+
+---
+
+## Getting the digest out
+
+| Route | What you get |
+| --- | --- |
+| Digest page, **Export** | Markdown, PDF, CSV or JSON |
+| `/api/workspaces/{slug}/feed.xml` | The digest as an RSS feed |
+| `/api/workspaces/{slug}/articles.csv` | Every article as a spreadsheet |
+| `/api/workspaces/{slug}/sources.opml` | The source list, for any feed reader |
+| Delivery | Email, Slack, Discord, Telegram, custom webhook |
+
+Delivery can also happen by itself after a scheduled run. It is **off by
+default**, because a fresh clone that started mailing people would be a
+surprise. Turn it on with `AUTO_DELIVER=1` and set the channel and recipient,
+either in the environment or per workspace in its settings.
+
+A channel that is not configured says so. It does not fail silently, and it
+does not try to send to an address meant for a different channel.
 
 ---
 
@@ -122,6 +232,9 @@ nothing is waiting. Add `APP_URL` and `CRON_SECRET` as repository secrets and it
 works. On Vercel Pro you can delete that workflow and schedule both in
 `vercel.json` directly.
 
+Once `CRON_SECRET` is set the scheduler routes refuse any request without it,
+so they are safe to leave exposed.
+
 ### Docker, Oracle Cloud, Render, any VM
 
 The container is the full featured target. Everything Vercel cannot do,
@@ -145,6 +258,15 @@ entry:
 `render.yaml` is a working blueprint for Render. Note that Render's free tier
 spins down after 15 minutes of inactivity and offers no cron at all, so use the
 GitHub Actions workflow there too.
+
+### Postgres
+
+Set `DATABASE_URL` and the same schema is created there instead of SQLite. The
+data layer is written once: queries use `?` placeholders and are rewritten for
+Postgres, and every timestamp is ISO 8601 UTC text rather than a native date
+type, so behaviour does not drift between the two engines. SSL is required for
+a remote host and not forced for a local one, which is what a container on the
+same machine needs.
 
 ---
 
@@ -214,14 +336,18 @@ Eighteen source kinds. All work with no key except where noted.
 | `html` | Any section or homepage, with article links scored and extracted |
 | `googlenews` | Google News RSS search and topic feeds |
 | `hackernews` | The official Firebase API, no rate limit |
-| `youtube` | Channel and playlist feeds |
+| `youtube` | Channel and playlist feeds. A channel address, a bare `@handle` or a `UC...` id all work |
 | `search` | SerpAPI, Brave, Tavily, Exa, or self-hosted SearXNG |
 | `reddit` | Needs OAuth credentials (see below) |
 | `browser` | Playwright rendering for JavaScript-heavy sites. Server tier only |
 | `newsapi` `gnews` `newsdata` `currents` `mediastack` `guardian` `nyt` `marketaux` `finnhub` | Each needs its own key |
 
-Paste any website URL into the **sources** page and it will find that site's
+![The sources page](docs/images/sources.png)
+
+Paste any website address into the **sources** page and it will find that site's
 feeds for you, from `<link rel="alternate">` tags and by probing common paths.
+An address that is not a working feed is refused when you add it, rather than
+being stored and reported as a fetch failure once a day forever.
 
 **Reddit changed in 2026.** The unauthenticated `.json` endpoints now return
 403, so a script-type OAuth app at <https://www.reddit.com/prefs/apps> is
@@ -253,7 +379,7 @@ burning part of every run's time budget forever.
 
 ---
 
-## Providers
+## Providers and keys
 
 Nineteen LLM providers and eleven embedding backends, all interchangeable at
 runtime.
@@ -269,17 +395,34 @@ dependency-free lexical fallback.
 
 Selection is automatic: the best available backend wins, which on a fresh
 install with no keys is the bundled model. `EMBEDDING_PROVIDER` pins one.
+Embedding deliberately prefers a local backend over a hosted one even when the
+hosted one scores higher, because embedding runs once per article every day and
+nobody expects adding a summarisation key to start spending quota on the
+highest volume call in the pipeline.
 
 ### Bring your own key
 
-Visitors can paste their own keys in the browser. Keys are held in
-`localStorage`, sent as `X-LLM-Key-<provider>` headers with that visitor's
-requests only, and never written to disk, logged or shared. That is what makes
-it safe to host this publicly without paying for everyone's inference. Set
-`ALLOW_CLIENT_KEYS=0` for a private instance.
+Every API the app can use takes a key from the browser, not only the model
+providers. That is eighteen credentials in four groups: web search, news APIs,
+social and video, and the embedding-only providers.
+
+![Settings, showing which keys came from the browser and which from the server](docs/images/settings.png)
+
+Keys are held in `localStorage`, sent as `X-LLM-Key-<slug>` headers with that
+visitor's own requests, and never written to a URL, logged, stored or shared.
+That is what makes it safe to host this publicly without paying for everyone's
+inference. Set `ALLOW_CLIENT_KEYS=0` for a private instance.
 
 Cloudflare needs **both** a token and an account id, because the account id is
 part of the request URL.
+
+### What it costs
+
+Every model call is metered by provider, model, token count and price, and the
+usage page adds it up. A call to a model with no published price is reported as
+unpriced rather than as free, because a zero in a cost column is a claim.
+
+![The usage page](docs/images/usage.png)
 
 ---
 
@@ -317,7 +460,8 @@ python -m server.ops.eval --sweep   # every threshold from 0.20 to 0.98
 ```
 
 The twelve shipped cases are deliberately adversarial; most are pairs that any
-embedding model scores highly and only the guard separates.
+embedding model scores highly and only the guard separates. The shipped set
+scores F1 1.000, and the run prints every merge the guard prevented.
 
 A set shipped in a repository can only be a sanity check. To tune against your
 own beat:
@@ -339,13 +483,15 @@ those are the only ones whose labels change anything.
 server/
   runtime.py      detects serverless vs server, exposes a capability matrix
   settings.py     every environment variable
+  credentials.py  every non-model API key, described for the UI
   util.py         URL canonicalisation, SimHash, time parsing
   db/             one schema over SQLite and Postgres
   llm/            19 providers, per-request keyring, strict routing
   embeddings/     11 backends, per-backend thresholds, similarity
   ingest/         18 source adapters, one polite HTTP client
-  pipeline/       the nine stages and the resumable runner
-  delivery/       email, Slack, Discord, Telegram, webhooks, RSS out
+  pipeline/       the ten stages and the resumable runner
+  research.py     one-shot topic search across every backend at once
+  delivery/       email, Slack, Discord, Telegram, webhooks, RSS, file export
   rag/            semantic search and grounded question answering
   ops/            cost meter, CLI, evaluation
   presets/        eight ready-made beats
@@ -368,7 +514,8 @@ across both engines.
 
 - **Summaries are machine written.** Every digest entry carries its source
   links, and the prompts forbid asserting anything not in the supplied text,
-  but follow the links before relying on one.
+  but follow the links before relying on one. An event whose coverage supports
+  nothing beyond its headline gets no summary rather than a padded one.
 - **Clustering splits developing stories sometimes.** Coverage arriving hours
   apart with different framing can land just under the threshold and become two
   events. Lowering `CLUSTER_THRESHOLD` fixes it and costs precision; measure
@@ -376,11 +523,15 @@ across both engines.
 - **The contradiction guard is English and rule based.** It covers the outcome
   vocabulary that matters most in finance, law and politics. It will not catch
   a contradiction phrased in a way it has no word for.
+- **Research results are often undated.** Search APIs frequently return no
+  publication date, so sorting a research run by date orders only the results
+  that carried one.
 - **Free tiers are small.** NewsAPI allows 100 requests a day and is
   localhost-only; GNews gives 10 articles per request with a 12 hour delay;
   Mediastack allows 100 requests a *month*. The keyless sources (RSS, sitemaps,
   Google News, Hacker News) carry the project and have no such limits.
 - **Some publishers block automated clients.** Reuters and AP no longer
   publish usable public feeds at all; the presets reach them through Google
-  News queries instead.
+  News queries instead. Roughly a sixth of article extractions are refused this
+  way on a typical run, and those articles fall back to their feed summary.
 - **Vercel Hobby crons run once a day.** See the deployment section.
