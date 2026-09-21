@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from contextlib import suppress
 
 from ..db import repo
 from ..delivery import channels as delivery
@@ -180,10 +181,8 @@ def cmd_doctor(_: argparse.Namespace) -> int:
         if not embedder["available"]:
             continue
         chosen = ""
-        try:
+        with suppress(Exception):
             chosen = " <- selected" if embeddings.resolve().id == embedder["id"] else ""
-        except Exception:  # noqa: BLE001
-            pass
         print(f"  {embedder['label']}, dim {embedder['dim']}{chosen}")
 
     print()

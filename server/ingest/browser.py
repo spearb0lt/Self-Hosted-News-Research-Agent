@@ -16,6 +16,7 @@ why the option is greyed out.
 """
 from __future__ import annotations
 
+from contextlib import suppress
 from typing import Any
 
 from .. import settings
@@ -180,17 +181,13 @@ class BrowserAdapter(SourceAdapter):
                             f"The page returned HTTP {response.status}.",
                             retryable=response.status in (429, 500, 502, 503, 504),
                         )
-                    try:
+                    # Never reaching network idle is the normal case on an ad
+                    # funded page, and the DOM is usually ready anyway.
+                    with suppress(Exception):
                         page.wait_for_load_state("networkidle", timeout=idle_ms)
-                    except Exception:  # noqa: BLE001
-                        # Never reaching network idle is the normal case on an
-                        # ad funded page, and the DOM is usually ready anyway.
-                        pass
                     if wait_for:
-                        try:
+                        with suppress(Exception):
                             page.wait_for_selector(wait_for, timeout=idle_ms)
-                        except Exception:  # noqa: BLE001
-                            pass
                     html = page.content()
                     final_url = page.url or url
                     return html, final_url

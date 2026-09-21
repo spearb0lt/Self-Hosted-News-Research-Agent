@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import re
 import time
+from contextlib import suppress
 from typing import Any
 
 from .. import settings
@@ -1076,12 +1077,11 @@ class GeminiProvider(BaseProvider):
                     "max_output_tokens": max_tokens,
                     "system_instruction": _compose_system(system),
                 }
-                try:
-                    # Summarising a news cluster needs no hidden reasoning, and
-                    # paying for it would double the cost of every call.
+                # Summarising a news cluster needs no hidden reasoning, and
+                # paying for it would double the cost of every call. Older SDKs
+                # have no thinking config at all, which is equally fine.
+                with suppress(Exception):
                     config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
-                except Exception:  # noqa: BLE001 - older SDKs lack thinking config
-                    pass
                 if json_mode:
                     config_kwargs["response_mime_type"] = "application/json"
 

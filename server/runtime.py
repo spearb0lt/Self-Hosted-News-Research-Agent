@@ -19,13 +19,13 @@ import shutil
 import sys
 import time
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from importlib import util as importlib_util
 from pathlib import Path
 from typing import Any
 
 
-class Tier(str, Enum):
+class Tier(StrEnum):
     """How much control this process has over its own lifetime."""
 
     SERVERLESS = "serverless"

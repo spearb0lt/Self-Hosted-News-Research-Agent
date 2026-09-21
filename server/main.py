@@ -122,15 +122,14 @@ async def bind_request_credentials(request: Request, call_next):
     if settings.ALLOW_CLIENT_KEYS:
         for raw_name, raw_value in request.headers.items():
             name = raw_name.lower()
-            if name.startswith(keyring.KEY_PREFIX):
-                if value := keyring.clean_key(raw_value):
-                    keys[name[len(keyring.KEY_PREFIX) :]] = value
-            elif name.startswith(keyring.BASE_URL_PREFIX):
-                if value := keyring.clean_base_url(raw_value):
-                    base_urls[name[len(keyring.BASE_URL_PREFIX) :]] = value
-            elif name.startswith(keyring.ACCOUNT_PREFIX):
-                if value := keyring.clean_account(raw_value):
-                    accounts[name[len(keyring.ACCOUNT_PREFIX) :]] = value
+            for prefix, clean, target in (
+                (keyring.KEY_PREFIX, keyring.clean_key, keys),
+                (keyring.BASE_URL_PREFIX, keyring.clean_base_url, base_urls),
+                (keyring.ACCOUNT_PREFIX, keyring.clean_account, accounts),
+            ):
+                if name.startswith(prefix) and (value := clean(raw_value)):
+                    target[name[len(prefix) :]] = value
+                    break
 
     keyring.bind(keys, base_urls, accounts)
     try:

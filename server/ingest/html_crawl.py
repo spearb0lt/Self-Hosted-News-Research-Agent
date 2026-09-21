@@ -152,9 +152,7 @@ def is_article_like(url: str) -> bool:
         return False
     # A bare section like /sport or /business is an index page, unless it ends
     # in something long enough to be a slug.
-    if len(segments) == 1 and len(segments[0]) < 24 and "-" not in segments[0]:
-        return False
-    return True
+    return not (len(segments) == 1 and len(segments[0]) < 24 and "-" not in segments[0])
 
 
 def score_link(url: str, text: str) -> float:
