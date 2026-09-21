@@ -157,7 +157,22 @@ def _gather(
     used: list[str] = []
     failed: list[dict[str, str]] = []
 
+    # The search adapter deliberately queries ONE provider per source, which is
+    # right for a scheduled workspace source: fanning out on every run would
+    # burn four quotas for one feed. Research is the opposite case, so each
+    # provider holding a key is asked separately here.
+    expanded: list[tuple[str, dict[str, Any]]] = []
     for kind in backends:
+        if kind != "search":
+            expanded.append((kind, {}))
+            continue
+        adapter_cls = adapter_for("search")
+        if adapter_cls is None:
+            continue
+        for name in adapter_cls().available_backends():
+            expanded.append((kind, {"backend": name}))
+
+    for kind, extra in expanded:
         if deadline.expired():
             break
         adapter_cls = adapter_for(kind)
@@ -169,23 +184,26 @@ def _gather(
         if not usable:
             failed.append({"backend": kind, "error": reason})
             continue
+        label = f"{kind}:{extra['backend']}" if extra.get("backend") else kind
         try:
-            outcome = adapter.fetch("", config={"query": query}, limit=per_backend)
+            outcome = adapter.fetch(
+                "", config={"query": query, **extra}, limit=per_backend
+            )
         except SourceError as exc:
-            failed.append({"backend": kind, "error": exc.message})
+            failed.append({"backend": label, "error": exc.message})
             continue
         except Exception as exc:  # noqa: BLE001 - one backend must not stop the rest
-            failed.append({"backend": kind, "error": str(exc)[:200]})
+            failed.append({"backend": label, "error": str(exc)[:200]})
             continue
 
         if outcome.status == "skipped":
-            failed.append({"backend": kind, "error": outcome.error or "Skipped."})
+            failed.append({"backend": label, "error": outcome.error or "Skipped."})
             continue
         if outcome.items:
-            used.append(kind)
+            used.append(label)
             items.extend(outcome.items)
         else:
-            failed.append({"backend": kind, "error": "Returned nothing for this query."})
+            failed.append({"backend": label, "error": "Returned nothing for this query."})
 
     return items, used, failed
 

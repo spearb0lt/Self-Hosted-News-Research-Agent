@@ -30,7 +30,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* Runs before the first paint so a chosen theme never flashes. */}
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} />
       </head>
-      <body className="min-h-dvh antialiased">
+      {/* Extensions inject attributes into body before React hydrates.
+          ColorZilla adds cz-shortcut-listen, Grammarly adds its own. The
+          warning is about this element only, not its children. */}
+      <body className="min-h-dvh antialiased" suppressHydrationWarning>
         <a
           href="#main"
           className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-lg focus:border focus:border-line focus:bg-surface focus:px-3 focus:py-2 focus:text-sm"
