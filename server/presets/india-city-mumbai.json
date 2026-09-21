@@ -37,9 +37,9 @@
     }
   ],
   "keywords": {
-    "include": ["Mumbai", "BMC", "MMRDA", "MHADA", "local train", "Metro", "Thane", "Navi Mumbai", "BEST"],
+    "include": [],
     "exclude": ["horoscope", "box office collection"],
-    "boost": ["civic body", "waterlogging", "redevelopment", "megablock", "tender", "ward", "coastal road"]
+    "boost": ["civic body", "waterlogging", "redevelopment", "megablock", "tender", "ward", "coastal road", "Mumbai", "BMC", "MMRDA", "MHADA", "local train", "Metro", "Thane", "Navi Mumbai", "BEST"]
   },
   "config": {"lookback_hours": 24, "digest_bullets": 5},
   "sources": [

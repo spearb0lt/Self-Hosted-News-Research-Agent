@@ -42,9 +42,9 @@
     }
   ],
   "keywords": {
-    "include": ["launch", "open source", "chip", "cloud", "model", "vulnerability", "antitrust", "API"],
+    "include": [],
     "exclude": ["coupon", "deal of the day", "best black friday", "horoscope"],
-    "boost": ["acquires", "shuts down", "CVE", "benchmark", "release", "lawsuit", "outage"]
+    "boost": ["acquires", "shuts down", "CVE", "benchmark", "release", "lawsuit", "outage", "launch", "open source", "chip", "cloud", "model", "vulnerability", "antitrust", "API"]
   },
   "config": {"lookback_hours": 24, "digest_bullets": 6},
   "sources": [

@@ -37,9 +37,9 @@
     }
   ],
   "keywords": {
-    "include": ["Supreme Court", "High Court", "bench", "judgment", "petition", "NCLT", "SEBI", "circular", "bail", "writ"],
+    "include": [],
     "exclude": ["horoscope", "box office", "recipe", "transfer window"],
-    "boost": ["verdict", "constitution bench", "stay", "quashed", "notification", "ordinance", "chargesheet", "collegium"]
+    "boost": ["verdict", "constitution bench", "stay", "quashed", "notification", "ordinance", "chargesheet", "collegium", "Supreme Court", "High Court", "bench", "judgment", "petition", "NCLT", "SEBI", "circular", "bail", "writ"]
   },
   "config": {"lookback_hours": 24, "digest_bullets": 6},
   "sources": [

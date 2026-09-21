@@ -42,9 +42,9 @@
     }
   ],
   "keywords": {
-    "include": ["SEBI", "RBI", "NSE", "BSE", "Nifty", "Sensex", "MPC", "rupee", "FII", "IPO", "NBFC", "GST"],
+    "include": [],
     "exclude": ["horoscope", "cricket", "box office", "recipe"],
-    "boost": ["circular", "consultation paper", "rate decision", "results", "guidance", "penalty", "insider trading", "listing"]
+    "boost": ["circular", "consultation paper", "rate decision", "results", "guidance", "penalty", "insider trading", "listing", "SEBI", "RBI", "NSE", "BSE", "Nifty", "Sensex", "MPC", "rupee", "FII", "IPO", "NBFC", "GST"]
   },
   "config": {"lookback_hours": 24, "digest_bullets": 6},
   "sources": [

@@ -42,9 +42,9 @@
     }
   ],
   "keywords": {
-    "include": ["emissions", "renewable", "grid", "solar", "battery", "COP", "net zero", "coal", "carbon"],
+    "include": [],
     "exclude": ["horoscope", "celebrity", "recipe"],
-    "boost": ["auction", "record", "phase out", "target", "curtailment", "tariff", "capacity addition"]
+    "boost": ["auction", "record", "phase out", "target", "curtailment", "tariff", "capacity addition", "emissions", "renewable", "grid", "solar", "battery", "COP", "net zero", "coal", "carbon"]
   },
   "config": {"lookback_hours": 48, "digest_bullets": 5},
   "sources": [

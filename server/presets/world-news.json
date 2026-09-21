@@ -37,9 +37,9 @@
     }
   ],
   "keywords": {
-    "include": ["United Nations", "election", "ceasefire", "sanctions", "summit", "protest", "tariff"],
+    "include": [],
     "exclude": ["horoscope", "celebrity gossip", "recipe", "transfer rumour"],
-    "boost": ["breaking", "killed", "resigns", "agreement", "emergency", "evacuation", "vote"]
+    "boost": ["breaking", "killed", "resigns", "agreement", "emergency", "evacuation", "vote", "United Nations", "election", "ceasefire", "sanctions", "summit", "protest", "tariff"]
   },
   "config": {"lookback_hours": 12, "digest_bullets": 7},
   "sources": [

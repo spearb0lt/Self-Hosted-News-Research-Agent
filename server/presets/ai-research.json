@@ -42,9 +42,9 @@
     }
   ],
   "keywords": {
-    "include": ["arXiv", "transformer", "benchmark", "fine-tuning", "open weights", "LLM", "diffusion", "RLHF"],
+    "include": [],
     "exclude": ["stock tip", "crypto airdrop", "horoscope"],
-    "boost": ["state of the art", "released weights", "ablation", "scaling law", "interpretability", "reproduce"]
+    "boost": ["state of the art", "released weights", "ablation", "scaling law", "interpretability", "reproduce", "arXiv", "transformer", "benchmark", "fine-tuning", "open weights", "LLM", "diffusion", "RLHF"]
   },
   "config": {"lookback_hours": 48, "digest_bullets": 6},
   "sources": [

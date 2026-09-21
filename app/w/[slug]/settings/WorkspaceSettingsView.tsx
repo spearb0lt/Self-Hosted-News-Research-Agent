@@ -382,7 +382,7 @@ function WorkspaceDetailsCard({
             setSaved(false);
           }}
           label="Apply this workspace's keywords"
-          description="Keywords filter at ingest: an article that matches an excluded word is dropped before anything is spent on it, and an included one is kept."
+          description="Keywords act at ingest. Excluded words drop a story before anything is spent on it, and boosted words lift one up the digest. An include list, if this workspace has one, is a whitelist: everything it does not match is dropped, so leave it empty unless that is what you want."
         />
         <Toggle
           checked={applySourceWeight}

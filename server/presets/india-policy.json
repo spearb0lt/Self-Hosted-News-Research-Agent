@@ -42,9 +42,9 @@
     }
   ],
   "keywords": {
-    "include": ["Cabinet", "ministry", "Parliament", "bill", "scheme", "PIB", "notification", "policy", "Niti Aayog"],
+    "include": [],
     "exclude": ["horoscope", "box office", "IPL", "recipe"],
-    "boost": ["approved", "tabled", "gazette", "allocation", "committee report", "ordinance", "consultation"]
+    "boost": ["approved", "tabled", "gazette", "allocation", "committee report", "ordinance", "consultation", "Cabinet", "ministry", "Parliament", "bill", "scheme", "PIB", "notification", "policy", "Niti Aayog"]
   },
   "config": {"lookback_hours": 24, "digest_bullets": 6},
   "sources": [
