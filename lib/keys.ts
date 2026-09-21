@@ -1,7 +1,11 @@
 /**
  * The browser side key vault.
  *
- * Provider credentials are kept in localStorage and nowhere else. They are
+ * One store for every credential a reader can supply, model providers and data
+ * services alike, keyed by the slug the backend reads it back under. Anything
+ * added here is sent by credentialHeaders() with no further wiring.
+ *
+ * Credentials are kept in localStorage and nowhere else. They are
  * attached as request headers by lib/api.ts on their way to this app's own
  * /api routes, and they are never written to a URL, a query string, a log line
  * or any third party. Clearing the browser's site data removes them.
@@ -17,9 +21,9 @@ const ARTICLE_SORT_KEY = "news-research.article-sort.v1";
 const RESEARCH_SORT_KEY = "news-research.research-sort.v1";
 const DISPLAY_KEY = "news-research.display.v1";
 
-/** What the user pasted for one provider. */
+/** What the user pasted for one provider or data service. */
 export interface ProviderCredential {
-  /** The API token. Sent as X-LLM-Key-{provider}. */
+  /** The API token. Sent as X-LLM-Key-{slug}. */
   key?: string;
   /** An override for the provider's base URL. Sent as X-LLM-Base-{provider}. */
   base?: string;

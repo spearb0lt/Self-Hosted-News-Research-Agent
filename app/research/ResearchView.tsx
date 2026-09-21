@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
+import { useConfig } from "@/components/ConfigProvider";
 import { ProviderPicker, useProviderSelection } from "@/components/ProviderPicker";
 import { ErrorState } from "@/components/states";
 import {
@@ -323,9 +324,18 @@ function BackendPicker({
   error: ApiError | null;
   onRetry: () => void;
 }) {
+  const { config } = useConfig();
   const [open, setOpen] = useState(false);
   const usable = backends.filter((entry) => entry.available);
   const locked = backends.filter((entry) => !entry.available);
+
+  // A backend kind and its credential share a slug wherever one key switches
+  // exactly one backend on, which is every news API. Web search is fed by any
+  // of four, so that row can only point at the section.
+  const credentialSlugs = useMemo(
+    () => new Set((config?.data_credentials ?? []).map((entry) => entry.slug)),
+    [config],
+  );
 
   if (error) {
     return (
@@ -370,7 +380,7 @@ function BackendPicker({
           {locked.map((entry) => (
             <div
               key={entry.kind}
-              className="flex items-start gap-2.5 rounded-lg border border-line p-2.5 opacity-60"
+              className="flex items-start gap-2.5 rounded-lg border border-line p-2.5"
             >
               <input
                 type="checkbox"
@@ -378,11 +388,26 @@ function BackendPicker({
                 disabled
                 readOnly
                 aria-label={entry.label}
-                className="mt-0.5 size-4 shrink-0"
+                className="mt-0.5 size-4 shrink-0 opacity-60"
               />
               <span className="min-w-0">
-                <span className="block text-sm font-medium text-muted">{entry.label}</span>
-                <span className="block text-xs text-faint break-anywhere">{entry.reason}</span>
+                <span className="block text-sm font-medium text-muted opacity-60">{entry.label}</span>
+                <span className="block text-xs text-faint break-anywhere opacity-60">
+                  {entry.reason}
+                </span>
+                {/* The reason names an environment variable, which reads as
+                    something only the deployment can fix. This browser can
+                    supply the key itself, so the row says where. */}
+                <Link
+                  href={
+                    credentialSlugs.has(entry.kind)
+                      ? `/settings#credential-${entry.kind}`
+                      : "/settings#data-keys"
+                  }
+                  className="mt-1 inline-block text-xs font-medium text-accent underline underline-offset-2"
+                >
+                  Add your own key
+                </Link>
               </span>
             </div>
           ))}

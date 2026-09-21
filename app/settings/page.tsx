@@ -29,7 +29,7 @@ import {
   subscribeToVault,
   type ProviderCredential,
 } from "@/lib/keys";
-import type { Capability, ProviderStatus } from "@/lib/types";
+import type { Capability, DataCredential, KeySource, ProviderStatus } from "@/lib/types";
 
 export default function GlobalSettingsPage() {
   const { config, error, loading, reload } = useConfig();
@@ -39,8 +39,8 @@ export default function GlobalSettingsPage() {
       <div>
         <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Settings</h1>
         <p className="mt-1 max-w-prose text-sm text-muted">
-          Provider keys, the embedding model, what you want shown as you read, and what this
-          deployment can and cannot do.
+          Provider keys, keys for the search engines and news APIs, the embedding model, what you
+          want shown as you read, and what this deployment can and cannot do.
         </p>
       </div>
 
@@ -57,6 +57,11 @@ export default function GlobalSettingsPage() {
       ) : config ? (
         <>
           <KeyVaultCard providers={config.providers} allowClientKeys={config.allow_client_keys} />
+          <DataKeysCard
+            credentials={config.data_credentials}
+            groups={config.credential_groups}
+            allowClientKeys={config.allow_client_keys}
+          />
           <EmbedderCard embedders={config.embedders} />
           <CapabilitiesCard
             capabilities={config.runtime.capabilities}
@@ -100,6 +105,9 @@ function KeyVaultCard({
           <Button
             size="sm"
             variant="ghost"
+            // One vault holds the data and search keys as well, and a reader
+            // asking to clear their keys means all of them.
+            title="Removes every key this browser holds, including the data and search keys below."
             onClick={() => {
               clearAllCredentials();
             }}
@@ -197,26 +205,11 @@ function ProviderCard({ provider }: { provider: ProviderStatus }) {
       .finally(() => setVerifying(false));
   };
 
-  const sourceBadge =
-    provider.key_source === "server" ? (
-      <Badge tone="ok" title="A key is configured on the server">
-        server key
-      </Badge>
-    ) : provider.key_source === "client" ? (
-      <Badge tone="accent" title="Using the key stored in this browser">
-        your key
-      </Badge>
-    ) : provider.local ? (
-      <Badge tone="neutral">no key needed</Badge>
-    ) : (
-      <Badge tone="neutral">no key</Badge>
-    );
-
   return (
     <li className="rounded-xl border border-line p-3 sm:p-4">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="mr-auto min-w-0 text-sm font-semibold break-anywhere">{provider.label}</h3>
-        {sourceBadge}
+        <KeySourceBadge source={provider.key_source} local={provider.local} />
         <Badge tone={provider.available ? "ok" : "neutral"}>
           {provider.available ? "ready" : "unavailable"}
         </Badge>
@@ -304,6 +297,262 @@ function ProviderCard({ provider }: { provider: ProviderStatus }) {
                 : "The provider answered but listed no models."}
             </Notice>
           ) : null}
+        </div>
+      ) : null}
+    </li>
+  );
+}
+
+/**
+ * Where the key in use came from, worded the same for a model provider and a
+ * data service so the two lists read as one promise rather than two.
+ */
+function KeySourceBadge({ source, local = false }: { source: KeySource; local?: boolean }) {
+  if (source === "server") {
+    return (
+      <Badge tone="ok" title="A key is configured on the server">
+        server key
+      </Badge>
+    );
+  }
+  if (source === "client") {
+    return (
+      <Badge tone="accent" title="Using the key stored in this browser">
+        your key
+      </Badge>
+    );
+  }
+  return <Badge tone="neutral">{local ? "no key needed" : "no key"}</Badge>;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Data and search keys                                                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Keys for everything that is not a model: search engines, news APIs, social
+ * platforms, embedding only services.
+ *
+ * They go into the same vault as the provider keys and travel as the same
+ * X-LLM-Key-{slug} header, because the backend reads both out of one keyring.
+ * Nothing here needs its own storage or its own request path.
+ */
+function DataKeysCard({
+  credentials,
+  groups,
+  allowClientKeys,
+}: {
+  credentials: DataCredential[];
+  groups: Record<string, string>;
+  allowClientKeys: boolean;
+}) {
+  const [openSlug, setOpenSlug] = useState("");
+
+  // /research links straight at one credential. Landing on a collapsed row part
+  // way down a list of eighteen would leave the reader hunting for the very
+  // thing the link was for, so the target opens and comes into view.
+  useEffect(() => {
+    const target = window.location.hash.replace(/^#credential-/, "");
+    if (!target || target.startsWith("#")) return;
+    setOpenSlug(target);
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById(`credential-${target}`)?.scrollIntoView({ block: "center" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
+  const sections = useMemo(() => {
+    const byGroup = new Map<string, DataCredential[]>();
+    for (const credential of credentials) {
+      const existing = byGroup.get(credential.group);
+      if (existing) existing.push(credential);
+      else byGroup.set(credential.group, [credential]);
+    }
+    // The backend's own order first. A group it did not name still renders,
+    // rather than taking its credentials off the page with it.
+    const ids = [
+      ...Object.keys(groups).filter((id) => byGroup.has(id)),
+      ...[...byGroup.keys()].filter((id) => !(id in groups)),
+    ];
+    return ids.map((id) => ({
+      id,
+      title: id in groups ? groups[id] : "Other services",
+      entries: byGroup.get(id) ?? [],
+    }));
+  }, [credentials, groups]);
+
+  if (credentials.length === 0) return null;
+
+  return (
+    <Card className="scroll-mt-24 p-4 sm:p-6" id="data-keys">
+      <SectionHeading
+        title="Data and search keys"
+        description="Keys for the search engines, news APIs and other services a run can draw on. Like the provider keys above, they are stored in this browser only, attached to your own requests as headers, and never written to a URL, logged, or shared."
+      />
+
+      {!allowClientKeys ? (
+        <div className="mb-4">
+          <Notice tone="warn" title="This deployment ignores keys from the browser">
+            Pasting a key here will have no effect. Only the keys the server holds are used.
+          </Notice>
+        </div>
+      ) : null}
+
+      <div className="flex flex-col gap-6">
+        {sections.map((section) => (
+          <section key={section.id}>
+            <h3 className="mb-2 text-sm font-semibold text-muted">{section.title}</h3>
+            <ul className="flex flex-col gap-3">
+              {section.entries.map((credential) => (
+                <CredentialRow
+                  key={credential.slug}
+                  credential={credential}
+                  open={openSlug === credential.slug}
+                  onToggle={() =>
+                    setOpenSlug((current) => (current === credential.slug ? "" : credential.slug))
+                  }
+                />
+              ))}
+            </ul>
+          </section>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function CredentialRow({
+  credential,
+  open,
+  onToggle,
+}: {
+  credential: DataCredential;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const [stored, setStored] = useState<ProviderCredential>({});
+  const [partnerStored, setPartnerStored] = useState<ProviderCredential>({});
+  const [key, setKey] = useState("");
+  const [partner, setPartner] = useState("");
+
+  const partnerSlug = credential.partner_slug;
+
+  const read = useCallback(() => {
+    const vault = loadVault();
+    setStored(vault[credential.slug] ?? {});
+    setPartnerStored(partnerSlug ? (vault[partnerSlug] ?? {}) : {});
+  }, [credential.slug, partnerSlug]);
+
+  useEffect(() => {
+    read();
+    return subscribeToVault(read);
+  }, [read]);
+
+  const save = () => {
+    if (key.trim()) setCredential(credential.slug, { key: key.trim() });
+    if (partnerSlug && partner.trim()) setCredential(partnerSlug, { key: partner.trim() });
+    setKey("");
+    setPartner("");
+  };
+
+  const forget = () => {
+    clearCredential(credential.slug);
+    if (partnerSlug) clearCredential(partnerSlug);
+    setKey("");
+    setPartner("");
+  };
+
+  // Half a pair is worse than none: the request goes out and is rejected.
+  const halfPaired = Boolean(partnerSlug) && Boolean(stored.key) !== Boolean(partnerStored.key);
+
+  return (
+    <li
+      id={`credential-${credential.slug}`}
+      className="scroll-mt-24 rounded-xl border border-line p-3 sm:p-4"
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <h4 className="mr-auto min-w-0 text-sm font-semibold break-anywhere">{credential.label}</h4>
+        <KeySourceBadge source={credential.key_source} />
+        <Badge tone={credential.available ? "ok" : "neutral"}>
+          {credential.available ? "ready" : "not set up"}
+        </Badge>
+        <Button size="sm" variant="ghost" onClick={onToggle} aria-expanded={open}>
+          {open ? "Close" : stored.key ? "Edit key" : "Add key"}
+        </Button>
+      </div>
+
+      {/* The backend writes this for a reader. Rendered word for word. */}
+      <p className="mt-2 text-sm text-muted break-anywhere">{credential.enables}</p>
+
+      {credential.free_tier ? (
+        <p className="mt-1 text-xs text-faint break-anywhere">Free tier: {credential.free_tier}</p>
+      ) : null}
+
+      {stored.key ? (
+        <p className="mt-2 font-mono text-xs text-muted break-anywhere">
+          {maskKey(stored.key)}
+          {partnerSlug && partnerStored.key ? ` / ${maskKey(partnerStored.key)}` : ""}
+        </p>
+      ) : null}
+
+      {halfPaired ? (
+        <p className="mt-2 text-xs text-warn break-anywhere">
+          {credential.label} needs both values. Only one of them is stored here.
+        </p>
+      ) : null}
+
+      {open ? (
+        <div className="mt-3 flex flex-col gap-3 rounded-lg bg-raised p-3">
+          <TextInput
+            label="API key"
+            type="password"
+            value={key}
+            onChange={(event) => setKey(event.target.value)}
+            placeholder={stored.key ? "Stored. Type a new key to replace it." : "Paste the key"}
+            autoComplete="off"
+            spellCheck={false}
+            hint={
+              credential.env_names.length
+                ? `The server would read this from ${credential.env_names.join(" or ")}.`
+                : undefined
+            }
+          />
+
+          {partnerSlug ? (
+            <TextInput
+              label={credential.partner_label || "Second value"}
+              type="password"
+              value={partner}
+              onChange={(event) => setPartner(event.target.value)}
+              placeholder={
+                partnerStored.key ? "Stored. Type a new value to replace it." : "Required as well"
+              }
+              autoComplete="off"
+              spellCheck={false}
+              hint={`Sent alongside the key above. ${credential.label} rejects a request carrying only one of them.`}
+            />
+          ) : null}
+
+          <div className="flex flex-wrap gap-2">
+            <Button variant="primary" size="sm" onClick={save}>
+              Save in this browser
+            </Button>
+            {stored.key || partnerStored.key ? (
+              <Button variant="ghost" size="sm" onClick={forget}>
+                Forget
+              </Button>
+            ) : null}
+            {credential.docs_url ? (
+              <a
+                href={credential.docs_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="self-center rounded-md px-1 text-sm text-accent underline underline-offset-2"
+              >
+                Where to get a key
+              </a>
+            ) : null}
+          </div>
         </div>
       ) : null}
     </li>

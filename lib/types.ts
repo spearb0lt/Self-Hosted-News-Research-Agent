@@ -72,6 +72,36 @@ export interface ProviderStatus {
   local: boolean;
 }
 
+/**
+ * A key for something other than a model: a search engine, a news API, a social
+ * platform, an embedding only provider.
+ *
+ * The backend reads each one by its slug from the same per request keyring the
+ * LLM providers use, so the browser sends it as X-LLM-Key-{slug} and nothing
+ * new is needed on the wire.
+ */
+export interface DataCredential {
+  slug: string;
+  label: string;
+  /** What the server would read this from. Shown so a self hoster can set it there instead. */
+  env_names: string[];
+  docs_url: string;
+  /** What having this key switches on. Written for a reader, so render it verbatim. */
+  enables: string;
+  /** A key into AppConfig.credential_groups. */
+  group: string;
+  /**
+   * A second slug this credential cannot work without, sent as its own header.
+   * Empty for all but Reddit, which needs a client id and a client secret.
+   */
+  partner_slug: string;
+  partner_label: string;
+  /** Empty when the service publishes no free allowance. */
+  free_tier: string;
+  available: boolean;
+  key_source: KeySource;
+}
+
 export interface SourceKind {
   kind: string;
   label: string;
@@ -118,6 +148,9 @@ export interface AppConfig {
   providers: ProviderStatus[];
   embedders: ProviderStatus[];
   source_kinds: SourceKind[];
+  data_credentials: DataCredential[];
+  /** Group id to heading, in the order the backend wants them shown. */
+  credential_groups: Record<string, string>;
   presets: Preset[];
   delivery_channels: DeliveryChannel[];
 }

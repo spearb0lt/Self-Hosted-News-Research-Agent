@@ -154,11 +154,29 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   }
 
   if (!response.ok) {
-    if (payload === null && text) {
-      throw new ApiError(`Request failed with status ${response.status}.`, {
-        hint: "The backend replied with something that was not JSON.",
-        status: response.status,
-      });
+    if (payload === null) {
+      // Every route of ours answers 5xx as JSON, so a 5xx that is not JSON did
+      // not come from the API at all: it is the dev proxy's own HTML page, put
+      // there because uvicorn is not listening. Saying "not JSON" describes the
+      // body and hides the cause, so name the cause instead.
+      if (response.status >= 500) {
+        throw new ApiError(
+          `The API server is not answering (status ${response.status}).`,
+          {
+            hint:
+              "It looks like the backend is down or restarting. Start it with " +
+              "`start-dev.cmd`, or with `uvicorn server.main:app --reload --port 8000`, " +
+              "and try again.",
+            status: response.status,
+          },
+        );
+      }
+      if (text) {
+        throw new ApiError(`Request failed with status ${response.status}.`, {
+          hint: "The backend replied with something that was not JSON.",
+          status: response.status,
+        });
+      }
     }
     throw readErrorPayload(payload, response.status);
   }

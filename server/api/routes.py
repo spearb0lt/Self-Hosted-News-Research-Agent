@@ -18,7 +18,8 @@ from fastapi import APIRouter, Body, Header, HTTPException, Query, Request, Resp
 from pydantic import BaseModel, Field
 
 from .. import settings
-from ..credentials import GROUP_LABELS, all_status as credential_status
+from ..credentials import GROUP_LABELS
+from ..credentials import all_status as credential_status
 from ..db import repo
 from ..delivery import channels as delivery
 from ..delivery import export as exporters
