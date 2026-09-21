@@ -231,6 +231,28 @@ def available_channels() -> list[dict[str, Any]]:
     ]
 
 
+def _target_for(name: str, target: str) -> str:
+    """The override to hand this channel, or "" to use its own configuration.
+
+    One request carries one target, and sending to several channels at once is
+    the normal case, so the value has to be matched to the channel it suits. A
+    mail address handed to Slack as a webhook URL used to reach the HTTP client
+    and come back as a library error about a missing scheme.
+    """
+    value = (target or "").strip()
+    if not value:
+        return ""
+    if name == "email":
+        local, _, domain = value.partition("@")
+        return value if local and "." in domain and "://" not in value else ""
+    if name in ("slack", "discord", "webhook"):
+        return value if value.startswith(("http://", "https://")) else ""
+    if name == "telegram":
+        # A chat id is numeric, or an @channelname.
+        return value if value.lstrip("-").isdigit() or value.startswith("@") else ""
+    return ""
+
+
 def deliver(
     digest: dict[str, Any], channels: list[str], *, target: str = ""
 ) -> list[Result]:
@@ -240,13 +262,14 @@ def deliver(
         if handler is None:
             results.append(Result(name, "skipped", error=f"Unknown channel '{name}'."))
             continue
+        own = _target_for(name, target)
         try:
             if name == "email":
-                results.append(handler(digest, to=target))
+                results.append(handler(digest, to=own))
             elif name in ("slack", "discord", "webhook"):
-                results.append(handler(digest, url=target))
+                results.append(handler(digest, url=own))
             elif name == "telegram":
-                results.append(handler(digest, chat_id=target))
+                results.append(handler(digest, chat_id=own))
             else:
                 results.append(handler(digest))
         except Exception as exc:  # noqa: BLE001 - a channel must never raise out
