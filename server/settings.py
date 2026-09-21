@@ -6,6 +6,7 @@ work with whatever subset of keys happens to be present, including none at all.
 """
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
@@ -18,12 +19,40 @@ MODELS_DIR = Path(os.environ.get("MODELS_DIR", "").strip() or (BASE_DIR / "Seman
 # The project's own .env fills gaps the real environment has not already
 # covered. A hosted deployment ships no .env, so the platform's environment is
 # the single source of truth there.
+def _warn_duplicate_env_keys(path: Path) -> None:
+    """Complain about a name that appears twice in a .env file.
+
+    python-dotenv reads top to bottom and the last assignment wins, so a
+    duplicate line lower down silently replaces a real key higher up with an
+    empty string. That is invisible: the file plainly contains the key, and the
+    provider simply reports itself as unconfigured. It cost a working Tavily
+    key here, so it is worth one line of noise at start up.
+    """
+    import re
+    from collections import Counter
+
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return
+    names = re.findall(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=", text, re.M)
+    repeated = sorted(name for name, count in Counter(names).items() if count > 1)
+    if repeated:
+        logging.getLogger(__name__).warning(
+            "%s defines these names more than once, and the last one wins, which "
+            "silently discards any value set earlier: %s",
+            path.name,
+            ", ".join(repeated),
+        )
+
+
 if os.environ.get("IGNORE_DOTENV", "").strip().lower() not in {"1", "true", "yes"}:
     try:
         from dotenv import load_dotenv
 
         _env_file = BASE_DIR / ".env"
         if _env_file.exists():
+            _warn_duplicate_env_keys(_env_file)
             load_dotenv(_env_file, override=False)
     except ImportError:  # python-dotenv is optional in a slim deployment
         pass

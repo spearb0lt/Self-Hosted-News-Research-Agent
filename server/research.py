@@ -233,14 +233,31 @@ def _extract_bodies(items: list[RawItem], deadline: Deadline, budget: int) -> No
                 item.published_at = parsed["published_at"]
 
 
-def _rank(items: list[RawItem], query: str) -> tuple[list[dict[str, Any]], int]:
-    """Order by relevance to the query and recency, dropping near duplicates."""
+def _rank(
+    items: list[RawItem], query: str, *, dedupe: bool = True
+) -> tuple[list[dict[str, Any]], int]:
+    """Order by relevance to the query and recency, dropping near duplicates.
+
+    `dedupe` exists because deduplication must happen exactly once, on the
+    first pass, while every item is still described by its headline alone.
+    Re-running it after body text has been fetched for some items and not
+    others compares a three thousand character vector against a title, and the
+    enriched articles lose: three results that had just been successfully
+    extracted were dropped as duplicates of the thin ones that survived. The
+    better the data, the more likely it was discarded.
+    """
     import numpy as np
 
     embedder = embeddings.resolve()
     _, duplicate_cut = embeddings.thresholds(embedder)
 
-    texts = [build_text(i.title, i.summary, i.content) for i in items]
+    # build_text prefers summary over content, which is right for a feed item
+    # whose summary is an editor's standfirst, and wrong here where the summary
+    # is a search engine snippet and the content is the article.
+    texts = [
+        build_text(i.title, max((i.content or ""), (i.summary or ""), key=len))
+        for i in items
+    ]
     vectors = embedder.embed([query, *texts], operation="research").vectors
     query_vector, doc_vectors = vectors[0], vectors[1:]
 
@@ -263,7 +280,11 @@ def _rank(items: list[RawItem], query: str) -> tuple[list[dict[str, Any]], int]:
     removed = 0
     for score, index in scored:
         vector = doc_vectors[index]
-        if kept_vectors and float(np.max(np.asarray(kept_vectors) @ vector)) >= duplicate_cut:
+        if (
+            dedupe
+            and kept_vectors
+            and float(np.max(np.asarray(kept_vectors) @ vector)) >= duplicate_cut
+        ):
             removed += 1
             continue
         item = items[index]
@@ -277,7 +298,13 @@ def _rank(items: list[RawItem], query: str) -> tuple[list[dict[str, Any]], int]:
                 # would otherwise read as news.google.com. The adapter records
                 # the real outlet, and that is what a reader needs to see.
                 "domain": (item.meta or {}).get("publisher") or item.domain or host_of(item.url),
-                "summary": truncate(item.summary or item.content or "", 400),
+                # The longer of the two, not the first non empty one. A search
+                # backend returns a short snippet as the summary, and taking it
+                # in preference threw away a 2,800 character body that the
+                # extraction stage had just fetched.
+                "summary": truncate(
+                    max((item.content or ""), (item.summary or ""), key=len), 400
+                ),
                 "published_at": item.published_at,
                 "relevance": round(float(relevance[index]), 4),
                 "score": round(score, 4),
@@ -349,10 +376,22 @@ def research(
             backends_used=used, backends_failed=failed,
         )
 
-    if extract and settings.EXTRACT_FULLTEXT:
-        _extract_bodies(items, deadline, budget=min(limit, 12))
-
+    # Rank first, extract the leaders, then rank again. Extracting the first
+    # items in fan out order fetched whatever the first backend returned, which
+    # is Google News, whose redirector URLs cannot be extracted at all. The
+    # results that did carry a direct publisher link sat further down the list
+    # and never got fetched, so three results in ten had any body text.
+    #
+    # The first pass ranks on headlines alone, which is a good enough proxy for
+    # deciding what is worth fetching, and the second pass sees the bodies.
     ranked, removed = _rank(items, query)
+    if extract and settings.EXTRACT_FULLTEXT:
+        by_url = {item.url: item for item in items}
+        survivors = [by_url[a["url"]] for a in ranked if a["url"] in by_url]
+        _extract_bodies(survivors[:limit], deadline, budget=min(limit, 12))
+        # Only the survivors, and only re-ordered. The duplicate decisions were
+        # made above on a consistent view of every item.
+        ranked, _ = _rank(survivors, query, dedupe=False)
     ranked = ranked[:limit]
 
     # Relevance decides which results survive the cut, always. Date order is

@@ -1,7 +1,10 @@
-# Secrets
+# Secrets. The wildcard matters: a backup or a variant like .env.backup-...,
+# .env.production or .env.old carries the same real keys as .env itself, and
+# naming each form individually is how one of them eventually gets committed.
+# Only the example, which holds no values, is tracked.
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 
 # Python
 __pycache__/
