@@ -150,6 +150,13 @@ def available_backends() -> list[dict[str, Any]]:
     return out
 
 
+def _why_unavailable(kind: str) -> str:
+    for entry in available_backends():
+        if entry["kind"] == kind:
+            return entry["reason"] or f"{entry['label']} cannot run here."
+    return f"There is no source kind called '{kind}'."
+
+
 def _gather(
     query: str, backends: list[str], per_backend: int, deadline: Deadline
 ) -> tuple[list[RawItem], list[str], list[dict[str, str]]]:
@@ -363,11 +370,25 @@ def research(
     # With nothing specified, everything usable is tried. Each adapter reports
     # its own unavailability, so listing them all costs nothing when most have
     # no key.
-    chosen = backends or [
-        entry["kind"] for entry in available_backends() if entry["available"]
-    ] or ["googlenews"]
+    usable = {e["kind"] for e in available_backends() if e["available"]}
+    if backends:
+        # An explicitly named backend that cannot run must say so. Silently
+        # dropping it returned an empty result with an empty failure list,
+        # which reads as "nothing matched your query" when the truth is "that
+        # backend has no key".
+        requested = list(backends)
+        chosen = [k for k in requested if k in usable]
+        unusable = [
+            {"backend": k, "error": _why_unavailable(k)}
+            for k in requested
+            if k not in usable
+        ]
+    else:
+        chosen = sorted(usable) or ["googlenews"]
+        unusable = []
 
     items, used, failed = _gather(query, chosen, per_backend, deadline)
+    failed = unusable + failed
     items = dedupe_items(items)
     total = len(items)
     if not items:

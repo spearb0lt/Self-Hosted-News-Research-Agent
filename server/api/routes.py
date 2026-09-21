@@ -18,6 +18,7 @@ from fastapi import APIRouter, Body, Header, HTTPException, Query, Request, Resp
 from pydantic import BaseModel, Field
 
 from .. import settings
+from ..credentials import GROUP_LABELS, all_status as credential_status
 from ..db import repo
 from ..delivery import channels as delivery
 from ..delivery import export as exporters
@@ -190,6 +191,12 @@ def config() -> dict[str, Any]:
         "providers": llm.all_status(),
         "embedders": embeddings.all_status(),
         "source_kinds": describe_adapters(),
+        # Every non-LLM credential, so the settings page can offer an input for
+        # each one. The keyring has always accepted these slugs and the
+        # adapters have always preferred them over the server's own value;
+        # nothing told the browser they existed.
+        "data_credentials": credential_status(),
+        "credential_groups": GROUP_LABELS,
         "presets": [_preset_summary(p) for p in list_presets()],
         "delivery_channels": delivery.available_channels(),
     }
