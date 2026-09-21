@@ -9,6 +9,7 @@
 
 const STORAGE_KEY = "news-research.provider-keys.v1";
 const PREFS_KEY = "news-research.prefs.v1";
+const VIEWS_KEY = "news-research.workspace-views.v1";
 
 /** What the user pasted for one provider. */
 export interface ProviderCredential {
@@ -178,6 +179,59 @@ export function savePrefs(next: Prefs): void {
     // Same as above: a blocked store costs a preference, not the page.
   }
   notify();
+}
+
+/* -------------------------------------------------------------------------- */
+/* Per workspace view                                                          */
+/* -------------------------------------------------------------------------- */
+
+/** Which reading of a workspace the user last chose. */
+export type WorkspaceView = "digest" | "raw";
+
+function isView(value: unknown): value is WorkspaceView {
+  return value === "digest" || value === "raw";
+}
+
+/**
+ * Kept per slug rather than as one global preference, because a workspace with
+ * AI turned off is only readable as a raw list while one with it on is not.
+ */
+export function loadWorkspaceView(slug: string): WorkspaceView | null {
+  if (!canStore()) return null;
+  let raw: string | null = null;
+  try {
+    raw = window.localStorage.getItem(VIEWS_KEY);
+  } catch {
+    return null;
+  }
+  if (!raw) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!isRecord(parsed)) return null;
+  const value = parsed[slug];
+  return isView(value) ? value : null;
+}
+
+export function saveWorkspaceView(slug: string, view: WorkspaceView): void {
+  if (!canStore()) return;
+  try {
+    const raw = window.localStorage.getItem(VIEWS_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : {};
+    const views: Record<string, WorkspaceView> = {};
+    if (isRecord(parsed)) {
+      for (const [key, value] of Object.entries(parsed)) {
+        if (isView(value)) views[key] = value;
+      }
+    }
+    views[slug] = view;
+    window.localStorage.setItem(VIEWS_KEY, JSON.stringify(views));
+  } catch {
+    // Same as the vault: a blocked store costs a preference, not the page.
+  }
 }
 
 /* -------------------------------------------------------------------------- */

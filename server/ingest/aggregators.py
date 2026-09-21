@@ -156,10 +156,20 @@ class GoogleNewsAdapter(SourceAdapter):
         if not published:
             published = parse_datetime_iso(entry.get("published") or "")
 
+        # Google News never writes a description. Its summary field is either
+        # the headline repeated with the publisher appended, or, for a story it
+        # has grouped, a single run-on string concatenating the headlines of
+        # every outlet in that group: one observed entry was 869 characters of
+        # nine different headlines. Neither is a summary, and both read as
+        # nonsense under the title. The related headlines are kept in meta,
+        # where they are useful as coverage breadth without being displayed as
+        # prose, and the extraction stage fills in real body text later.
+        raw_summary = strip_html(str(entry.get("summary") or ""))
+
         return RawItem(
             url=link,
             title=title,
-            summary=str(entry.get("summary") or ""),
+            summary="",
             published_at=published,
             meta={
                 # The link is a Google redirector, so the real publisher is
@@ -167,6 +177,7 @@ class GoogleNewsAdapter(SourceAdapter):
                 "publisher": publisher,
                 "via": "google-news",
                 "feed_url": feed_url,
+                "cluster_text": truncate(raw_summary, 600),
             },
         )
 

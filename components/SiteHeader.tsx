@@ -9,6 +9,7 @@ import { cx } from "@/components/ui";
 
 const LINKS = [
   { href: "/", label: "Workspaces" },
+  { href: "/research", label: "Research" },
   { href: "/usage", label: "Usage" },
   { href: "/settings", label: "Settings" },
 ];

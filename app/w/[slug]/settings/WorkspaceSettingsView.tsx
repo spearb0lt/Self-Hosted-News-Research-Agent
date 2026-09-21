@@ -18,7 +18,7 @@ import {
 import { ApiError, api, toApiError } from "@/lib/api";
 import { absoluteDate, absoluteDateTime, slugify } from "@/lib/format";
 import { useAsync } from "@/lib/hooks";
-import type { DeliveryResult, Digest, Id, Theme } from "@/lib/types";
+import type { DeliveryResult, Digest, Id, Theme, WorkspaceConfig } from "@/lib/types";
 
 /**
  * A new theme needs an id the backend would have chosen itself. Existing
@@ -55,6 +55,7 @@ export function WorkspaceSettingsView({ slug }: { slug: string }) {
             initialTimezone={data.timezone}
             initialThemes={data.themes}
             initialEnabled={data.enabled}
+            initialConfig={data.config ?? {}}
             onSaved={reload}
           />
           <DigestCard slug={slug} />
@@ -76,6 +77,7 @@ function WorkspaceDetailsCard({
   initialTimezone,
   initialThemes,
   initialEnabled,
+  initialConfig,
   onSaved,
 }: {
   slug: string;
@@ -84,6 +86,7 @@ function WorkspaceDetailsCard({
   initialTimezone: string;
   initialThemes: Theme[];
   initialEnabled: boolean;
+  initialConfig: WorkspaceConfig;
   onSaved: () => void;
 }) {
   const [name, setName] = useState(initialName);
@@ -92,6 +95,8 @@ function WorkspaceDetailsCard({
   const [themes, setThemes] = useState<Theme[]>(initialThemes ?? []);
   const [newTheme, setNewTheme] = useState("");
   const [enabled, setEnabled] = useState(initialEnabled);
+  // Absent means on, which is what the backend assumes when the key is missing.
+  const [aiEnabled, setAiEnabled] = useState(initialConfig.ai_enabled !== false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
   const [saved, setSaved] = useState(false);
@@ -130,6 +135,9 @@ function WorkspaceDetailsCard({
         timezone: timezone.trim(),
         themes,
         enabled,
+        // A PATCH replaces the stored config outright, so every key that came
+        // back is sent again, including any this screen does not render.
+        config: { ...initialConfig, ai_enabled: aiEnabled },
       })
       .then(() => {
         setSaved(true);
@@ -244,7 +252,7 @@ function WorkspaceDetailsCard({
         </div>
       </fieldset>
 
-      <div className="mt-5">
+      <div className="mt-5 flex flex-col gap-4">
         <Toggle
           checked={enabled}
           onChange={(value) => {
@@ -253,6 +261,21 @@ function WorkspaceDetailsCard({
           }}
           label="Collecting is on"
           description="Turn this off to leave the archive in place but stop new runs."
+        />
+        <Toggle
+          checked={aiEnabled}
+          onChange={(value) => {
+            setAiEnabled(value);
+            setSaved(false);
+          }}
+          label="Let runs call an AI model"
+          description={
+            "Off, a run makes no calls to any model at all: no theme classification, no event " +
+            "summaries, no digest bullets and no enrichment. It still deduplicates and clusters, " +
+            "because that runs on a bundled local model that costs nothing and needs no key. " +
+            "Measured on this deployment: about 11 seconds for a run with this off, against " +
+            "about 292 seconds with it on."
+          }
         />
       </div>
 

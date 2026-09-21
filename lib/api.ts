@@ -24,6 +24,10 @@ import type {
   HealthResponse,
   Id,
   JsonObject,
+  ResearchBackendsResponse,
+  ResearchBody,
+  ResearchResponse,
+  ResearchSaveBody,
   Run,
   SearchResponse,
   Source,
@@ -241,7 +245,13 @@ export const api = {
 
   articles: (
     slug: string,
-    query: { theme?: string; q?: string; limit?: number; offset?: number } = {},
+    query: {
+      theme?: string;
+      q?: string;
+      limit?: number;
+      offset?: number;
+      include_duplicates?: boolean;
+    } = {},
     signal?: AbortSignal,
   ) =>
     request<ArticlesResponse>(`/api/workspaces/${encodeURIComponent(slug)}/articles`, {
@@ -281,6 +291,18 @@ export const api = {
       body,
       signal,
     }),
+
+  researchBackends: (signal?: AbortSignal) =>
+    request<ResearchBackendsResponse>("/api/research/backends", { signal }),
+
+  // No timeout is imposed here. A fan out across search engines, followed by
+  // extraction and ranking, routinely runs into the tens of seconds, and the
+  // caller cancels through the signal rather than losing a finished search.
+  research: (body: ResearchBody, signal?: AbortSignal) =>
+    request<ResearchResponse>("/api/research", { method: "POST", body, signal }),
+
+  saveResearch: (body: ResearchSaveBody, signal?: AbortSignal) =>
+    request<WorkspaceDetail>("/api/research/save", { method: "POST", body, signal }),
 
   usage: (slug: string, signal?: AbortSignal) =>
     request<Usage>(`/api/workspaces/${encodeURIComponent(slug)}/usage`, { signal }),

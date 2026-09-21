@@ -30,13 +30,19 @@ export function relativeTime(value: string | null | undefined): string {
   if (abs < 90) return future ? "in a minute" : "a minute ago";
 
   const minutes = Math.round(abs / 60);
-  if (minutes < 60) return future ? `in ${minutes} minutes` : `${minutes} minutes ago`;
+  if (minutes < 60) return future
+      ? `in ${plural(minutes, "minute")}`
+      : `${plural(minutes, "minute")} ago`;
 
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return future ? `in ${hours} hours` : `${hours} hours ago`;
+  if (hours < 24) return future
+      ? `in ${plural(hours, "hour")}`
+      : `${plural(hours, "hour")} ago`;
 
   const days = Math.round(hours / 24);
-  if (days < 7) return future ? `in ${days} days` : `${days} days ago`;
+  if (days < 7) return future
+      ? `in ${plural(days, "day")}`
+      : `${plural(days, "day")} ago`;
 
   return absoluteDate(value);
 }

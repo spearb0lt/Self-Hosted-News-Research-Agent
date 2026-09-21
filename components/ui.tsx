@@ -75,13 +75,17 @@ export function Card({
   children,
   className,
   as: Tag = "div",
+  id,
 }: {
   children: ReactNode;
   className?: string;
   as?: "div" | "section" | "article" | "li";
+  /** Needed where something links to one card, such as a citation marker. */
+  id?: string;
 }) {
   return (
     <Tag
+      id={id}
       className={cx(
         "rounded-xl border border-line bg-surface shadow-[var(--shadow-sm)]",
         className,

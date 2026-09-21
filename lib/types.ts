@@ -129,6 +129,22 @@ export interface Theme {
   hint: string;
 }
 
+/**
+ * Per workspace settings, stored by the backend as one open JSON object.
+ *
+ * Only the keys this UI understands are named. The index signature is what
+ * makes the rest survive: a PATCH replaces the whole object, so an editor has
+ * to send back every key it was given, including ones added after this file
+ * was written.
+ */
+export interface WorkspaceConfig {
+  lookback_hours?: number;
+  digest_bullets?: number;
+  /** Absent means on. Off skips every LLM stage of a run. */
+  ai_enabled?: boolean;
+  [key: string]: JsonValue | undefined;
+}
+
 export interface Workspace {
   id: Id;
   slug: string;
@@ -136,6 +152,7 @@ export interface Workspace {
   description: string;
   timezone: string;
   themes: Theme[];
+  config: WorkspaceConfig;
   enabled: boolean;
   source_count: number;
   article_count: number;
@@ -189,6 +206,8 @@ export interface UpdateWorkspaceBody {
   timezone?: string;
   themes?: Array<string | Theme>;
   enabled?: boolean;
+  /** Replaces the stored object outright, so send every key that came back. */
+  config?: WorkspaceConfig;
 }
 
 export interface CreateSourceBody {
@@ -390,6 +409,78 @@ export interface Usage {
   total_cost_usd: number;
   by_provider: UsageRow[];
   recent_runs: UsageRun[];
+}
+
+/* -------------------------------------------------------------------------- */
+/* Research                                                                    */
+/* -------------------------------------------------------------------------- */
+
+/** One search engine the research endpoint can fan out to. */
+export interface ResearchBackend {
+  kind: string;
+  label: string;
+  available: boolean;
+  /** Names the key that would switch this backend on. Shown verbatim. */
+  reason: string;
+  needs_key: boolean;
+}
+
+export interface ResearchBackendsResponse {
+  backends: ResearchBackend[];
+}
+
+/** "raw" ranks and lists articles with no model at all. "report" also writes a brief. */
+export type ResearchMode = "raw" | "report";
+
+/**
+ * A search hit. `n` is the number the backend assigned, and it is what the
+ * brief's citation markers point at, so the UI must never renumber.
+ */
+export interface ResearchArticle {
+  n: number;
+  title: string;
+  url: string;
+  domain: string;
+  summary: string;
+  published_at: string | null;
+  relevance: number;
+  score: number;
+  meta: JsonObject;
+}
+
+export interface ResearchFailure {
+  backend: string;
+  /** Written to say which key would have widened the search. Shown verbatim. */
+  error: string;
+}
+
+export interface ResearchBody {
+  query: string;
+  mode: ResearchMode;
+  backends?: string[] | null;
+  limit?: number;
+  extract?: boolean;
+  provider?: string | null;
+  model?: string | null;
+}
+
+export interface ResearchResponse {
+  query: string;
+  mode: ResearchMode;
+  articles: ResearchArticle[];
+  /** Markdown. Empty in raw mode. */
+  report: string;
+  citations: ResearchArticle[];
+  backends_used: string[];
+  backends_failed: ResearchFailure[];
+  total_found: number;
+  duplicates_removed: number;
+}
+
+export interface ResearchSaveBody {
+  query: string;
+  name?: string;
+  backends?: string[] | null;
 }
 
 /* -------------------------------------------------------------------------- */

@@ -1,4 +1,4 @@
-import { DigestView } from "./DigestView";
+import { WorkspaceHome } from "./WorkspaceHome";
 
 export default async function WorkspaceDigestPage({
   params,
@@ -6,5 +6,5 @@ export default async function WorkspaceDigestPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  return <DigestView slug={slug} />;
+  return <WorkspaceHome slug={slug} />;
 }
