@@ -301,6 +301,17 @@ export interface NewsEvent {
   articles: Article[];
 }
 
+/**
+ * How the events endpoint orders what it returns.
+ *
+ * "importance" is the backend's own ranking, by how many outlets corroborated
+ * a story, and is what a reader means by the top stories.
+ */
+export type EventSort = "importance" | "newest" | "oldest";
+
+/** How the articles endpoint orders what it returns. */
+export type ArticleSort = "newest" | "oldest";
+
 export interface EventsResponse {
   events: NewsEvent[];
   total: number;
@@ -433,8 +444,18 @@ export interface ResearchBackendsResponse {
 export type ResearchMode = "raw" | "report";
 
 /**
- * A search hit. `n` is the number the backend assigned, and it is what the
- * brief's citation markers point at, so the UI must never renumber.
+ * How a finished search is ordered.
+ *
+ * Relevance always decides which results survive the cut. A date order is
+ * applied afterwards, to those survivors, so "newest" never degrades into
+ * whatever was published most recently regardless of the topic.
+ */
+export type ResearchSort = "relevance" | "newest" | "oldest";
+
+/**
+ * A search hit. `n` is the number the backend assigned in the order it
+ * returned the results, and it is what the brief's citation markers point at,
+ * so nothing may renumber a result set that came back with a brief.
  */
 export interface ResearchArticle {
   n: number;
@@ -460,6 +481,7 @@ export interface ResearchBody {
   backends?: string[] | null;
   limit?: number;
   extract?: boolean;
+  sort?: ResearchSort;
   provider?: string | null;
   model?: string | null;
 }
@@ -467,6 +489,8 @@ export interface ResearchBody {
 export interface ResearchResponse {
   query: string;
   mode: ResearchMode;
+  /** The order the backend actually applied, echoed back. */
+  sort: ResearchSort;
   articles: ResearchArticle[];
   /** Markdown. Empty in raw mode. */
   report: string;

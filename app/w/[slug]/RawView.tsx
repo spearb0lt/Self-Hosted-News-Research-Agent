@@ -4,30 +4,42 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { RunBar } from "@/components/RunBar";
 import { EmptyState, ErrorState, SkeletonRows } from "@/components/states";
-import { Button, Card, Toggle } from "@/components/ui";
+import { Button, Card, SegmentedControl, Toggle, type Segment } from "@/components/ui";
 import { ApiError, api, toApiError } from "@/lib/api";
 import { absoluteDateTime, compactNumber, hostOf, relativeTime } from "@/lib/format";
 import { useAsync } from "@/lib/hooks";
-import type { Article } from "@/lib/types";
+import { loadArticleSort, saveArticleSort } from "@/lib/keys";
+import type { Article, ArticleSort } from "@/lib/types";
 
 const PAGE_SIZE = 50;
 
-/** An article with the position it holds in the whole, newest first, list. */
+const SORTS: Array<Segment<ArticleSort>> = [
+  { id: "newest", label: "Newest", hint: "Most recently published first" },
+  { id: "oldest", label: "Oldest", hint: "Earliest published first, to read a day forwards" },
+];
+
+/** An article with the position it holds in the whole list, in the chosen order. */
 interface NumberedArticle {
   n: number;
   article: Article;
 }
 
 /**
- * Every article as it arrived, newest first, with nothing grouped or written.
+ * Every article as it arrived, with nothing grouped or written.
  *
  * This is the only readable view of a workspace whose runs make no AI calls,
  * and it is the one to check a digest against, so the numbering follows the
  * server's own ordering: row numbers come from the offset that fetched them
- * rather than from where a row happens to sit on screen.
+ * rather than from where a row happens to sit on screen. Ordering is the
+ * server's job too, for the same reason: sorting only the page in hand would
+ * number row 51 ahead of row 1.
  */
 export function RawView({ slug }: { slug: string }) {
   const [includeDuplicates, setIncludeDuplicates] = useState(false);
+  // Read straight out of storage rather than in an effect, because this view is
+  // only ever mounted in the browser, once WorkspaceHome has resolved its own
+  // stored choice. Deferring it would spend a request on the wrong order first.
+  const [sort, setSort] = useState<ArticleSort>(() => loadArticleSort(slug) ?? "newest");
 
   const load = useCallback(
     (signal: AbortSignal) =>
@@ -37,19 +49,21 @@ export function RawView({ slug }: { slug: string }) {
           limit: PAGE_SIZE,
           offset: 0,
           include_duplicates: includeDuplicates || undefined,
+          sort,
         },
         signal,
       ),
-    [slug, includeDuplicates],
+    [slug, includeDuplicates, sort],
   );
-  const { data, error, initialising, reload } = useAsync(load, [slug, includeDuplicates]);
+  const { data, error, initialising, reload } = useAsync(load, [slug, includeDuplicates, sort]);
 
   const [extra, setExtra] = useState<NumberedArticle[]>([]);
   const [loadingMore, setLoadingMore] = useState(false);
   const [moreError, setMoreError] = useState<ApiError | null>(null);
   const firstRender = useRef(true);
 
-  // A change of filter invalidates every page stacked on top of the first one.
+  // A change of filter or of order invalidates every page stacked on top of the
+  // first one, which is what puts the reader back on page one.
   useEffect(() => {
     if (firstRender.current) {
       firstRender.current = false;
@@ -57,7 +71,7 @@ export function RawView({ slug }: { slug: string }) {
     }
     setExtra([]);
     setMoreError(null);
-  }, [slug, includeDuplicates]);
+  }, [slug, includeDuplicates, sort]);
 
   const rows = useMemo<NumberedArticle[]>(() => {
     const first = (data?.articles ?? []).map<NumberedArticle>((article, index) => ({
@@ -70,6 +84,11 @@ export function RawView({ slug }: { slug: string }) {
   const total = data?.total ?? rows.length;
   const canLoadMore = rows.length < total;
 
+  const chooseSort = (next: ArticleSort) => {
+    setSort(next);
+    saveArticleSort(slug, next);
+  };
+
   const loadMore = () => {
     if (loadingMore) return;
     const offset = rows.length;
@@ -80,6 +99,7 @@ export function RawView({ slug }: { slug: string }) {
         limit: PAGE_SIZE,
         offset,
         include_duplicates: includeDuplicates || undefined,
+        sort,
       })
       .then((response) =>
         setExtra((current) => [
@@ -102,8 +122,16 @@ export function RawView({ slug }: { slug: string }) {
         <span className="text-sm text-muted" aria-live="polite">
           {initialising
             ? "Loading articles"
-            : `${compactNumber(total)} ${total === 1 ? "article" : "articles"}, newest first`}
+            : `${compactNumber(total)} ${total === 1 ? "article" : "articles"}, ${
+                sort === "newest" ? "newest first" : "oldest first"
+              }`}
         </span>
+        <SegmentedControl
+          options={SORTS}
+          value={sort}
+          onChange={chooseSort}
+          label="Order the articles"
+        />
         <Toggle
           checked={includeDuplicates}
           onChange={setIncludeDuplicates}

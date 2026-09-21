@@ -6,21 +6,42 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 
 import { ProviderPicker, useProviderSelection } from "@/components/ProviderPicker";
 import { ErrorState } from "@/components/states";
-import { Badge, Button, Card, SectionHeading, TextInput, cx } from "@/components/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  SectionHeading,
+  SegmentedControl,
+  TextInput,
+  cx,
+  type Segment,
+} from "@/components/ui";
 import { ApiError, api, toApiError } from "@/lib/api";
 import { relativeTime } from "@/lib/format";
 import { useAsync } from "@/lib/hooks";
+import { loadResearchSort, saveResearchSort } from "@/lib/keys";
 import { parseMarkdown, type Block, type InlineToken } from "@/lib/markdown";
 import type {
   ResearchArticle,
   ResearchBackend,
+  ResearchBody,
   ResearchMode,
   ResearchResponse,
+  ResearchSort,
 } from "@/lib/types";
 
 const RESULT_LIMIT = 25;
 /** Long enough to read, short enough not to linger after the jump. */
 const HIGHLIGHT_MS = 2400;
+
+const SORTS: Array<Segment<ResearchSort>> = [
+  { id: "relevance", label: "Relevance", hint: "Closest to what you asked for, first" },
+  { id: "newest", label: "Newest", hint: "The same results, most recently published first" },
+  { id: "oldest", label: "Oldest", hint: "The same results, earliest published first" },
+];
+
+/** The one backend that needs no key, and the one that cannot reach a publisher. */
+const HEADLINE_ONLY_BACKEND = "googlenews";
 
 /**
  * A topic search that does not touch a workspace.
@@ -35,18 +56,30 @@ export function ResearchView() {
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState<ResearchMode>("raw");
   const [disabledBackends, setDisabledBackends] = useState<string[]>([]);
+  const [sort, setSort] = useState<ResearchSort>("relevance");
 
   const [result, setResult] = useState<ResearchResponse | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
   const [running, setRunning] = useState(false);
   const [startedAt, setStartedAt] = useState(0);
   const inFlight = useRef<AbortController | null>(null);
+  // What the last search actually asked for, so a change of order can repeat it
+  // exactly rather than guess from a query box that has since been edited.
+  const lastRequest = useRef<ResearchBody | null>(null);
 
   const loadBackends = useCallback((signal: AbortSignal) => api.researchBackends(signal), []);
   const backendState = useAsync(loadBackends, []);
   const backends = useMemo(() => backendState.data?.backends ?? [], [backendState.data]);
 
   const canReport = providers.length > 0;
+
+  // This page is rendered on the server, so the stored order can only be picked
+  // up after mount. Nothing is fetched until a search is asked for, so the extra
+  // render costs no request and no flash.
+  useEffect(() => {
+    const stored = loadResearchSort();
+    if (stored) setSort(stored);
+  }, []);
 
   // A key pasted after the page loaded can make report mode possible, but the
   // reverse leaves the mode pointing at something the backend will refuse.
@@ -64,13 +97,11 @@ export function ResearchView() {
     [backends, disabledBackends],
   );
 
-  const search = useCallback(() => {
-    const trimmed = query.trim();
-    if (!trimmed || running) return;
-
+  const runSearch = useCallback((body: ResearchBody) => {
     inFlight.current?.abort();
     const controller = new AbortController();
     inFlight.current = controller;
+    lastRequest.current = body;
 
     setRunning(true);
     setError(null);
@@ -78,18 +109,7 @@ export function ResearchView() {
     setStartedAt(Date.now());
 
     api
-      .research(
-        {
-          query: trimmed,
-          mode,
-          backends: chosenBackends.length > 0 ? chosenBackends : null,
-          limit: RESULT_LIMIT,
-          extract: true,
-          provider: mode === "report" ? selection.provider || null : null,
-          model: mode === "report" ? selection.model || null : null,
-        },
-        controller.signal,
-      )
+      .research(body, controller.signal)
       .then((response) => setResult(response))
       .catch((cause: unknown) => {
         if (cause instanceof DOMException && cause.name === "AbortError") return;
@@ -101,7 +121,38 @@ export function ResearchView() {
           setRunning(false);
         }
       });
-  }, [query, running, mode, chosenBackends, selection]);
+  }, []);
+
+  const search = useCallback(() => {
+    const trimmed = query.trim();
+    if (!trimmed || running) return;
+    runSearch({
+      query: trimmed,
+      mode,
+      backends: chosenBackends.length > 0 ? chosenBackends : null,
+      limit: RESULT_LIMIT,
+      extract: true,
+      sort,
+      provider: mode === "report" ? selection.provider || null : null,
+      model: mode === "report" ? selection.model || null : null,
+    });
+  }, [query, running, mode, chosenBackends, sort, selection, runSearch]);
+
+  const chooseSort = useCallback(
+    (next: ResearchSort) => {
+      setSort(next);
+      saveResearchSort(next);
+      const previous = lastRequest.current;
+      // A brief cites each result by its number, and the backend numbers results
+      // in the order it returns them, so re-ordering a brief's list here would
+      // point every marker at the wrong article. A list with no brief promises
+      // nothing about its numbers and is re-ordered in place, for free.
+      if (previous && previous.mode === "report") {
+        runSearch({ ...previous, sort: next });
+      }
+    },
+    [runSearch],
+  );
 
   const cancel = useCallback(() => {
     inFlight.current?.abort();
@@ -202,6 +253,8 @@ export function ResearchView() {
       {result ? (
         <ResearchResult
           result={result}
+          sort={sort}
+          onSortChange={chooseSort}
           onSaved={(slug) => router.push(`/w/${encodeURIComponent(slug)}`)}
         />
       ) : null}
@@ -447,20 +500,58 @@ function articleDomId(n: number): string {
   return `research-article-${n}`;
 }
 
+/**
+ * Put a finished result set in a different order without asking for it again.
+ *
+ * Relevance made the cut, so re-ordering the survivors by date produces exactly
+ * the list the backend would have sent for that order. The comparison is the
+ * backend's own, down to where an undated result lands, so a list re-ordered
+ * here and one fetched fresh never disagree.
+ */
+function reorder(
+  articles: ResearchArticle[],
+  applied: ResearchSort,
+  wanted: ResearchSort,
+): ResearchArticle[] {
+  if (wanted === applied) return articles;
+
+  const next = [...articles];
+  if (wanted === "relevance") {
+    // `score`, not `relevance`: the ranking the backend cut on is relevance
+    // with a small nudge for freshness, and only `score` carries both.
+    next.sort((a, b) => b.score - a.score);
+  } else {
+    next.sort((a, b) => {
+      const left = a.published_at ?? "";
+      const right = b.published_at ?? "";
+      return wanted === "newest" ? right.localeCompare(left) : left.localeCompare(right);
+    });
+  }
+  return next.map((article, index) => ({ ...article, n: index + 1 }));
+}
+
 function ResearchResult({
   result,
+  sort,
+  onSortChange,
   onSaved,
 }: {
   result: ResearchResponse;
+  sort: ResearchSort;
+  onSortChange: (next: ResearchSort) => void;
   onSaved: (slug: string) => void;
 }) {
   const [highlighted, setHighlighted] = useState<number | null>(null);
   const [jumps, setJumps] = useState(0);
 
-  const known = useMemo(
-    () => new Set(result.articles.map((article) => article.n)),
-    [result.articles],
+  // A brief pins the numbering, so its list is only ever shown in the order the
+  // backend numbered it. Changing the order there starts a fresh search instead.
+  const articles = useMemo(
+    () => (result.report ? result.articles : reorder(result.articles, result.sort, sort)),
+    [result, sort],
   );
+
+  const known = useMemo(() => new Set(articles.map((article) => article.n)), [articles]);
 
   const jumpTo = useCallback((n: number) => {
     const target = document.getElementById(articleDomId(n));
@@ -491,7 +582,7 @@ function ResearchResult({
         </Card>
       ) : null}
 
-      {result.articles.length === 0 ? (
+      {articles.length === 0 ? (
         <Card className="p-6 text-center">
           <p className="text-sm font-medium">Nothing came back for that.</p>
           <p className="mt-1 text-sm text-muted">
@@ -499,15 +590,35 @@ function ResearchResult({
           </p>
         </Card>
       ) : (
-        <ol className="flex flex-col gap-3">
-          {result.articles.map((article) => (
-            <ResultRow
-              key={article.n}
-              article={article}
-              highlighted={highlighted === article.n}
+        <>
+          <div className="flex flex-col gap-1.5">
+            <SegmentedControl
+              options={SORTS}
+              value={sort}
+              onChange={onSortChange}
+              label="Order the results"
+              className="self-start"
             />
-          ))}
-        </ol>
+            <p className="max-w-prose text-xs text-faint">
+              Relevance always decides which results make the list, so Newest and Oldest
+              re-arrange those same results by date rather than fetching whatever happened to be
+              published most recently.
+              {result.report
+                ? " Changing it searches again, because the brief cites each result by its number."
+                : null}
+            </p>
+          </div>
+
+          <ol className="flex flex-col gap-3">
+            {articles.map((article) => (
+              <ResultRow
+                key={article.n}
+                article={article}
+                highlighted={highlighted === article.n}
+              />
+            ))}
+          </ol>
+        </>
       )}
     </div>
   );
@@ -522,6 +633,13 @@ function ResultSummary({
 }) {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<ApiError | null>(null);
+
+  // Google News is the only backend that needs no key, and its links are
+  // redirectors that never resolve to the publisher, so nothing was read. This
+  // is normal rather than a failure, and it is only worth saying when it is the
+  // whole search: alongside any other backend the list has bodies in it.
+  const headlinesOnly =
+    result.backends_used.length === 1 && result.backends_used[0] === HEADLINE_ONLY_BACKEND;
 
   const save = () => {
     if (saving) return;
@@ -565,6 +683,14 @@ function ResultSummary({
         ) : null}
       </div>
 
+      {headlinesOnly ? (
+        <p className="mt-2 max-w-prose text-xs text-muted">
+          Google News gives the headline, the publisher and the date but not the article text,
+          because its links point back to Google, so a web search key for Brave, Tavily, Exa or
+          SerpAPI is what gets the full text, from the direct publisher links those return.
+        </p>
+      ) : null}
+
       {result.backends_failed.length > 0 ? (
         <details className="mt-3 rounded-lg border border-line bg-raised p-3">
           <summary className="cursor-pointer text-sm font-medium">
@@ -600,6 +726,8 @@ function ResultSummary({
 }
 
 function ResultRow({ article, highlighted }: { article: ResearchArticle; highlighted: boolean }) {
+  const summary = article.summary.trim();
+
   return (
     <Card
       as="li"
@@ -637,10 +765,11 @@ function ResultRow({ article, highlighted }: { article: ResearchArticle; highlig
             </span>
           </div>
 
-          {article.summary ? (
-            <p className="mt-2 text-sm leading-relaxed text-ink/90 break-anywhere">
-              {article.summary}
-            </p>
+          {/* A headline only result has no body to show, and a blank paragraph
+              would read as something that failed to load rather than as all
+              there is. The row simply ends at its own byline. */}
+          {summary ? (
+            <p className="mt-2 text-sm leading-relaxed text-ink/90 break-anywhere">{summary}</p>
           ) : null}
         </div>
       </div>

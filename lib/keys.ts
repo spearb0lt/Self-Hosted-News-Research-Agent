@@ -7,9 +7,14 @@
  * or any third party. Clearing the browser's site data removes them.
  */
 
+import type { ArticleSort, EventSort, ResearchSort } from "./types";
+
 const STORAGE_KEY = "news-research.provider-keys.v1";
 const PREFS_KEY = "news-research.prefs.v1";
 const VIEWS_KEY = "news-research.workspace-views.v1";
+const EVENT_SORT_KEY = "news-research.event-sort.v1";
+const ARTICLE_SORT_KEY = "news-research.article-sort.v1";
+const RESEARCH_SORT_KEY = "news-research.research-sort.v1";
 
 /** What the user pasted for one provider. */
 export interface ProviderCredential {
@@ -182,25 +187,42 @@ export function savePrefs(next: Prefs): void {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Per workspace view                                                          */
+/* Per workspace choices                                                       */
 /* -------------------------------------------------------------------------- */
 
 /** Which reading of a workspace the user last chose. */
 export type WorkspaceView = "digest" | "raw";
 
+type Guard<T> = (value: unknown) => value is T;
+
 function isView(value: unknown): value is WorkspaceView {
   return value === "digest" || value === "raw";
 }
 
+function isEventSort(value: unknown): value is EventSort {
+  return value === "importance" || value === "newest" || value === "oldest";
+}
+
+function isArticleSort(value: unknown): value is ArticleSort {
+  return value === "newest" || value === "oldest";
+}
+
+function isResearchSort(value: unknown): value is ResearchSort {
+  return value === "relevance" || value === "newest" || value === "oldest";
+}
+
 /**
- * Kept per slug rather than as one global preference, because a workspace with
- * AI turned off is only readable as a raw list while one with it on is not.
+ * Read one slug's entry out of a map of choices.
+ *
+ * Every value is put through a guard on the way out as well as on the way in,
+ * because these keys outlive the code that wrote them: an option dropped in a
+ * later version must read back as "no choice" rather than as itself.
  */
-export function loadWorkspaceView(slug: string): WorkspaceView | null {
+function loadPerSlug<T>(storageKey: string, slug: string, isValid: Guard<T>): T | null {
   if (!canStore()) return null;
   let raw: string | null = null;
   try {
-    raw = window.localStorage.getItem(VIEWS_KEY);
+    raw = window.localStorage.getItem(storageKey);
   } catch {
     return null;
   }
@@ -213,22 +235,83 @@ export function loadWorkspaceView(slug: string): WorkspaceView | null {
   }
   if (!isRecord(parsed)) return null;
   const value = parsed[slug];
-  return isView(value) ? value : null;
+  return isValid(value) ? value : null;
+}
+
+function savePerSlug<T>(storageKey: string, slug: string, value: T, isValid: Guard<T>): void {
+  if (!canStore()) return;
+  try {
+    const raw = window.localStorage.getItem(storageKey);
+    const parsed: unknown = raw ? JSON.parse(raw) : {};
+    const kept: Record<string, T> = {};
+    if (isRecord(parsed)) {
+      for (const [key, entry] of Object.entries(parsed)) {
+        if (isValid(entry)) kept[key] = entry;
+      }
+    }
+    kept[slug] = value;
+    window.localStorage.setItem(storageKey, JSON.stringify(kept));
+  } catch {
+    // Same as the vault: a blocked store costs a preference, not the page.
+  }
+}
+
+/**
+ * Kept per slug rather than as one global preference, because a workspace with
+ * AI turned off is only readable as a raw list while one with it on is not.
+ */
+export function loadWorkspaceView(slug: string): WorkspaceView | null {
+  return loadPerSlug(VIEWS_KEY, slug, isView);
 }
 
 export function saveWorkspaceView(slug: string, view: WorkspaceView): void {
+  savePerSlug(VIEWS_KEY, slug, view, isView);
+}
+
+/**
+ * Also per slug: a fast moving beat is read newest first, while a workspace
+ * followed for its big stories is read by importance.
+ */
+export function loadEventSort(slug: string): EventSort | null {
+  return loadPerSlug(EVENT_SORT_KEY, slug, isEventSort);
+}
+
+export function saveEventSort(slug: string, sort: EventSort): void {
+  savePerSlug(EVENT_SORT_KEY, slug, sort, isEventSort);
+}
+
+export function loadArticleSort(slug: string): ArticleSort | null {
+  return loadPerSlug(ARTICLE_SORT_KEY, slug, isArticleSort);
+}
+
+export function saveArticleSort(slug: string, sort: ArticleSort): void {
+  savePerSlug(ARTICLE_SORT_KEY, slug, sort, isArticleSort);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Research                                                                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One choice for the whole Research page, since a topic search belongs to no
+ * workspace. It is kept out of Prefs so that changing it does not wake every
+ * provider picker subscribed to the vault.
+ */
+export function loadResearchSort(): ResearchSort | null {
+  if (!canStore()) return null;
+  let raw: string | null = null;
+  try {
+    raw = window.localStorage.getItem(RESEARCH_SORT_KEY);
+  } catch {
+    return null;
+  }
+  return isResearchSort(raw) ? raw : null;
+}
+
+export function saveResearchSort(sort: ResearchSort): void {
   if (!canStore()) return;
   try {
-    const raw = window.localStorage.getItem(VIEWS_KEY);
-    const parsed: unknown = raw ? JSON.parse(raw) : {};
-    const views: Record<string, WorkspaceView> = {};
-    if (isRecord(parsed)) {
-      for (const [key, value] of Object.entries(parsed)) {
-        if (isView(value)) views[key] = value;
-      }
-    }
-    views[slug] = view;
-    window.localStorage.setItem(VIEWS_KEY, JSON.stringify(views));
+    window.localStorage.setItem(RESEARCH_SORT_KEY, sort);
   } catch {
     // Same as the vault: a blocked store costs a preference, not the page.
   }

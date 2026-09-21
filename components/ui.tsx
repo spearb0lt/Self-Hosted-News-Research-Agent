@@ -302,6 +302,66 @@ export function Toggle({
 }
 
 /* -------------------------------------------------------------------------- */
+/* Segmented control                                                           */
+/* -------------------------------------------------------------------------- */
+
+export interface Segment<T extends string> {
+  id: T;
+  label: string;
+  /** Shown on hover and to a screen reader, for an option whose label is short. */
+  hint?: string;
+}
+
+/**
+ * A row of mutually exclusive choices, for a handful of options that are worth
+ * showing at once.
+ *
+ * It is buttons with aria-pressed rather than radios: nothing here is part of a
+ * form, and each press takes effect immediately.
+ */
+export function SegmentedControl<T extends string>({
+  options,
+  value,
+  onChange,
+  label,
+  className,
+}: {
+  options: ReadonlyArray<Segment<T>>;
+  /** Null leaves every option unpressed, for a choice still being read back. */
+  value: T | null;
+  onChange: (next: T) => void;
+  label: string;
+  className?: string;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label={label}
+      className={cx(
+        "inline-flex w-fit rounded-lg border border-line bg-surface p-0.5",
+        className,
+      )}
+    >
+      {options.map((option) => (
+        <button
+          key={option.id}
+          type="button"
+          onClick={() => onChange(option.id)}
+          aria-pressed={value === option.id}
+          title={option.hint}
+          className={cx(
+            "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+            value === option.id ? "bg-accent text-accent-ink" : "text-muted hover:text-ink",
+          )}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
 /* Feedback                                                                    */
 /* -------------------------------------------------------------------------- */
 

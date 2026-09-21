@@ -5,16 +5,25 @@ import { useCallback, useMemo, useState } from "react";
 
 import { RunBar } from "@/components/RunBar";
 import { EmptyState, ErrorState, SkeletonCards } from "@/components/states";
-import { Badge, Button, Card, cx } from "@/components/ui";
+import { Badge, Button, Card, SegmentedControl, cx, type Segment } from "@/components/ui";
 import { linkButtonClass } from "@/lib/classes";
 import { api } from "@/lib/api";
 import { absoluteDateTime, hostOf, plural, relativeTime, themeLabel } from "@/lib/format";
 import { useAsync } from "@/lib/hooks";
-import type { Article, NewsEvent, Theme } from "@/lib/types";
+import { loadEventSort, saveEventSort } from "@/lib/keys";
+import type { Article, EventSort, NewsEvent, Theme } from "@/lib/types";
 
 const PAGE_SIZE = 60;
 const UNGROUPED = "";
 const UNGROUPED_LABEL = "Everything else";
+
+// "Top stories" rather than "importance": what the backend ranks by is how
+// many outlets carried the same story, which is what a reader means by it.
+const SORTS: Array<Segment<EventSort>> = [
+  { id: "importance", label: "Top stories", hint: "Ranked by how many outlets carried the story" },
+  { id: "newest", label: "Newest", hint: "Most recently updated first" },
+  { id: "oldest", label: "Oldest", hint: "Longest running first" },
+];
 
 interface ThemeGroup {
   id: string;
@@ -26,6 +35,14 @@ export function DigestView({ slug }: { slug: string }) {
   // The chosen theme is an id, because that is what an event carries and what
   // the events endpoint filters on. Only labels are ever shown.
   const [theme, setTheme] = useState("");
+  // Read straight out of storage, as in RawView: this view only ever mounts in
+  // the browser, after WorkspaceHome has resolved its own stored choice.
+  const [sort, setSort] = useState<EventSort>(() => loadEventSort(slug) ?? "importance");
+
+  const chooseSort = (next: EventSort) => {
+    setSort(next);
+    saveEventSort(slug, next);
+  };
 
   const loadWorkspace = useCallback(
     (signal: AbortSignal) => api.getWorkspace(slug, signal),
@@ -35,10 +52,11 @@ export function DigestView({ slug }: { slug: string }) {
   const taxonomy = useMemo<Theme[]>(() => workspace.data?.themes ?? [], [workspace.data]);
 
   const load = useCallback(
-    (signal: AbortSignal) => api.events(slug, { theme: theme || undefined, limit: PAGE_SIZE }, signal),
-    [slug, theme],
+    (signal: AbortSignal) =>
+      api.events(slug, { theme: theme || undefined, limit: PAGE_SIZE, sort }, signal),
+    [slug, theme, sort],
   );
-  const { data, error, initialising, reload } = useAsync(load, [slug, theme]);
+  const { data, error, initialising, reload } = useAsync(load, [slug, theme, sort]);
 
   const events = useMemo(() => data?.events ?? [], [data]);
 
@@ -92,6 +110,12 @@ export function DigestView({ slug }: { slug: string }) {
           Today&apos;s events
           {data ? <span className="ml-2 text-sm font-normal text-muted">{data.total}</span> : null}
         </h2>
+        <SegmentedControl
+          options={SORTS}
+          value={sort}
+          onChange={chooseSort}
+          label="Order the events"
+        />
         <a
           href={api.feedUrl(slug)}
           className="rounded-md px-2 py-1 text-sm font-medium text-accent underline underline-offset-2"

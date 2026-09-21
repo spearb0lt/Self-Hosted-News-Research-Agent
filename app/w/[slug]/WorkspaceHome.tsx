@@ -3,15 +3,15 @@
 import { useEffect, useState } from "react";
 
 import { SkeletonCards } from "@/components/states";
-import { cx } from "@/components/ui";
+import { SegmentedControl, type Segment } from "@/components/ui";
 import { loadWorkspaceView, saveWorkspaceView, type WorkspaceView } from "@/lib/keys";
 
 import { DigestView } from "./DigestView";
 import { RawView } from "./RawView";
 
-const VIEWS: Array<{ id: WorkspaceView; label: string; hint: string }> = [
+const VIEWS: Array<Segment<WorkspaceView>> = [
   { id: "digest", label: "Digest", hint: "Grouped into events and filed under a theme" },
-  { id: "raw", label: "Raw", hint: "Every article, newest first, nothing written" },
+  { id: "raw", label: "Raw", hint: "Every article as it arrived, nothing written" },
 ];
 
 /**
@@ -35,27 +35,12 @@ export function WorkspaceHome({ slug }: { slug: string }) {
 
   return (
     <div className="flex flex-col gap-5">
-      <div
-        role="group"
-        aria-label="How to read this workspace"
-        className="inline-flex w-fit rounded-lg border border-line bg-surface p-0.5"
-      >
-        {VIEWS.map((entry) => (
-          <button
-            key={entry.id}
-            type="button"
-            onClick={() => choose(entry.id)}
-            aria-pressed={view === entry.id}
-            title={entry.hint}
-            className={cx(
-              "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-              view === entry.id ? "bg-accent text-accent-ink" : "text-muted hover:text-ink",
-            )}
-          >
-            {entry.label}
-          </button>
-        ))}
-      </div>
+      <SegmentedControl
+        options={VIEWS}
+        value={view}
+        onChange={choose}
+        label="How to read this workspace"
+      />
 
       {view === null ? (
         <SkeletonCards count={3} lines={3} />

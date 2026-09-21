@@ -10,6 +10,7 @@
 import { credentialHeaders } from "./keys";
 import type {
   AppConfig,
+  ArticleSort,
   ArticlesResponse,
   ChatBody,
   ChatResponse,
@@ -20,6 +21,7 @@ import type {
   Digest,
   DigestSummary,
   DiscoverResponse,
+  EventSort,
   EventsResponse,
   HealthResponse,
   Id,
@@ -235,7 +237,7 @@ export const api = {
 
   events: (
     slug: string,
-    query: { theme?: string; limit?: number; offset?: number } = {},
+    query: { theme?: string; limit?: number; offset?: number; sort?: EventSort } = {},
     signal?: AbortSignal,
   ) =>
     request<EventsResponse>(`/api/workspaces/${encodeURIComponent(slug)}/events`, {
@@ -251,6 +253,7 @@ export const api = {
       limit?: number;
       offset?: number;
       include_duplicates?: boolean;
+      sort?: ArticleSort;
     } = {},
     signal?: AbortSignal,
   ) =>
