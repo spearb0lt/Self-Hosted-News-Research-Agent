@@ -44,10 +44,21 @@ class Entry:
     units: int = 0  # items embedded, for providers that do not report tokens
 
     @property
-    def cost_usd(self) -> float:
+    def priced(self) -> bool:
+        return self.model in PRICES_PER_MTOK
+
+    @property
+    def cost_usd(self) -> float | None:
+        """What this call cost, or None when the model has no published price.
+
+        Returning None rather than zero matters. A model that is genuinely free
+        and a model nobody has entered a price for both rendered as $0.00, so
+        a page showing the total spend read as "you have spent nothing" when
+        the honest answer was "this is not being measured".
+        """
         price = PRICES_PER_MTOK.get(self.model)
-        if not price:
-            return 0.0
+        if price is None:
+            return None
         prompt_price, completion_price = price
         return (
             self.input_tokens * prompt_price + self.output_tokens * completion_price
@@ -62,7 +73,8 @@ class Entry:
             "input_tokens": self.input_tokens,
             "output_tokens": self.output_tokens,
             "units": self.units,
-            "cost_usd": round(self.cost_usd, 6),
+            "priced": self.priced,
+            "cost_usd": round(self.cost_usd, 6) if self.cost_usd is not None else None,
         }
 
 
@@ -79,12 +91,16 @@ class Collector:
         return out
 
     def totals(self) -> dict[str, Any]:
+        priced = [e for e in self.entries if e.priced]
         return {
             "calls": len(self.entries),
             "input_tokens": sum(e.input_tokens for e in self.entries),
             "output_tokens": sum(e.output_tokens for e in self.entries),
             "units": sum(e.units for e in self.entries),
-            "cost_usd": round(sum(e.cost_usd for e in self.entries), 6),
+            "cost_usd": round(sum(e.cost_usd or 0.0 for e in priced), 6),
+            # Counted separately so a total can never be read as complete when
+            # part of the spend is simply not measured.
+            "unpriced_calls": len(self.entries) - len(priced),
         }
 
 

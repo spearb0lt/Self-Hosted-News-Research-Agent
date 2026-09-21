@@ -235,7 +235,14 @@ def importance_of(
         # yesterday's without erasing a story that is still developing.
         recency = 2.0 * math.exp(-hours / 26.0)
 
-    return round((corroboration + volume + recency) * max(source_weight, 0.1), 4)
+    # Weight is damped rather than applied straight. A linear multiplier let a
+    # single story from a weight 3 source score 16.5 against 5.5 for one that
+    # five independent outlets carried, which inverts the premise of the whole
+    # app: corroboration is the signal, and trust in one outlet is a nudge on
+    # top of it. The square root keeps the ordering intuitive, weight 3 giving
+    # about 1.7x and weight 0.5 about 0.7x, without letting one source dominate.
+    damped = math.sqrt(max(source_weight, 0.01))
+    return round((corroboration + volume + recency) * damped, 4)
 
 
 ADJUDICATION_BAND = 0.08

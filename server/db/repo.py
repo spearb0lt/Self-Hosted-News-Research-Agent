@@ -1232,28 +1232,42 @@ def usage_summary(workspace_id: int, *, since_iso: str = "") -> dict[str, Any]:
         f"""
         SELECT provider, model, kind, COUNT(*) AS calls,
                SUM(input_tokens) AS input_tokens, SUM(output_tokens) AS output_tokens,
-               SUM(units) AS units, SUM(cost_usd) AS cost_usd
+               SUM(units) AS units, SUM(cost_usd) AS cost_usd,
+               SUM(CASE WHEN cost_usd IS NULL THEN 1 ELSE 0 END) AS unpriced
           FROM usage WHERE {clause}
          GROUP BY provider, model, kind
-         ORDER BY cost_usd DESC, calls DESC
+         ORDER BY calls DESC
         """,
         params,
     )
-    by_provider = [
-        {
-            "provider": r["provider"],
-            "model": r["model"],
-            "kind": r["kind"],
-            "calls": int(r["calls"] or 0),
-            "input_tokens": int(r["input_tokens"] or 0),
-            "output_tokens": int(r["output_tokens"] or 0),
-            "units": int(r["units"] or 0),
-            "cost_usd": round(float(r["cost_usd"] or 0), 6),
-        }
-        for r in rows
-    ]
+    by_provider = []
+    for r in rows:
+        calls = int(r["calls"] or 0)
+        unpriced = int(r["unpriced"] or 0)
+        by_provider.append(
+            {
+                "provider": r["provider"],
+                "model": r["model"],
+                "kind": r["kind"],
+                "calls": calls,
+                "input_tokens": int(r["input_tokens"] or 0),
+                "output_tokens": int(r["output_tokens"] or 0),
+                "units": int(r["units"] or 0),
+                # None, not zero, when nothing in this group had a published
+                # price. The UI must be able to say "not priced" rather than
+                # showing a total that reads as "this was free".
+                "cost_usd": (
+                    None if unpriced == calls else round(float(r["cost_usd"] or 0), 6)
+                ),
+                "priced": unpriced < calls,
+                "unpriced_calls": unpriced,
+            }
+        )
     return {
-        "total_cost_usd": round(sum(r["cost_usd"] for r in by_provider), 6),
+        "total_cost_usd": round(
+            sum(r["cost_usd"] or 0.0 for r in by_provider if r["priced"]), 6
+        ),
+        "unpriced_calls": sum(r["unpriced_calls"] for r in by_provider),
         "by_provider": by_provider,
     }
 

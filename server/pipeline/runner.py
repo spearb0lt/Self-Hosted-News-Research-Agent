@@ -30,7 +30,7 @@ from ..llm import registry as llm
 from ..ops import meter
 from ..runtime import Deadline
 from ..util import hours_ago_iso, now_iso, truncate
-from . import classify, cluster, digest, enrich, summarize
+from . import classify, cluster, digest, enrich, keywords, summarize
 from .dedup import find_duplicates
 
 # The order stages run in. Enrichment sits after the digest deliberately: it is
@@ -88,6 +88,8 @@ class Context:
         # theme classification, event summaries, digest bullets and enrichment,
         # which are the only stages that spend an API quota.
         self.ai_enabled = bool(config.get("ai_enabled", True))
+        self.apply_source_weight = bool(config.get("apply_source_weight", True))
+        self.keywords = keywords.build(workspace)
         self._embedder: Any = None
 
     @property
@@ -163,6 +165,10 @@ def _stage_ingest(ctx: Context) -> StageResult:
 
         new_count = 0
         for item in outcome.items:
+            # Applied before the insert rather than after, so an excluded story
+            # costs no row, no embedding and no model call.
+            if not ctx.keywords.allows(item.title, item.summary, item.content):
+                continue
             _, created = repo.upsert_article(
                 ctx.workspace_id,
                 source_id=source["id"],
@@ -192,6 +198,20 @@ def _stage_ingest(ctx: Context) -> StageResult:
         ctx.bump("articles_new", new_count)
 
     ctx.cursor.pop("source_index", None)
+    if ctx.keywords.active:
+        dropped = ctx.keywords.stats
+        ctx.stats["filtered_excluded"] = dropped["excluded"]
+        ctx.stats["filtered_not_included"] = dropped["not_included"]
+        total_dropped = dropped["excluded"] + dropped["not_included"]
+        if total_dropped and not ctx.stats.get("articles_new"):
+            # An include list that matches nothing produces an empty digest that
+            # looks exactly like every source being broken.
+            ctx.note(
+                f"Keyword rules removed all {total_dropped} items. Loosen the "
+                "include list, or turn keyword filtering off in settings."
+            )
+        elif total_dropped:
+            ctx.note(f"Keyword rules removed {total_dropped} items.")
     return "done"
 
 
@@ -416,6 +436,10 @@ def _stage_cluster(ctx: Context) -> StageResult:
 
     from .dedup import build_fingerprint
 
+    source_weights = {
+        int(row["id"]): float(row["weight"] or 1.0)
+        for row in repo.list_sources(ctx.workspace_id)
+    }
     fingerprints = {int(a["id"]): build_fingerprint(a) for a in ordered}
     existing = repo.open_events_with_centroids(ctx.workspace_id, ctx.dedup_since)
     existing_prints: dict[int, Any] = {}
@@ -440,6 +464,22 @@ def _stage_cluster(ctx: Context) -> StageResult:
         newest = max((m.get("published_at") or m.get("fetched_at") or "") for m in members)
         oldest = min((m.get("published_at") or m.get("fetched_at") or "") for m in members)
         domains = {m.get("domain") or "" for m in members}
+
+        # The most trusted source that carried the story, rather than the mean:
+        # weight expresses "I trust this outlet", and one trusted outlet
+        # covering something is the signal, not diluted by who else did.
+        weight = 1.0
+        if ctx.apply_source_weight:
+            weights = [
+                source_weights.get(m.get("source_id"))
+                for m in members
+                if source_weights.get(m.get("source_id")) is not None
+            ]
+            if weights:
+                weight = max(weights)
+        weight *= ctx.keywords.boost_factor(
+            " ".join(m.get("title") or "" for m in members)
+        )
 
         if proposal.existing_event_id:
             event_id = proposal.existing_event_id
@@ -472,6 +512,7 @@ def _stage_cluster(ctx: Context) -> StageResult:
                 size=total,
                 distinct_domains=len([d for d in domains if d]),
                 newest_published=newest,
+                source_weight=weight,
             ),
         )
 
