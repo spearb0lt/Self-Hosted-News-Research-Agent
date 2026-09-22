@@ -20,6 +20,18 @@ const backendOrigin = process.env.BACKEND_ORIGIN || "http://127.0.0.1:8000";
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  experimental: {
+    // Next gives a rewrite 30 seconds and then answers 500 itself. A search
+    // that fans out across several backends, fetches the article bodies and
+    // then has a model read them routinely takes longer than that, and the
+    // reply the browser got said the API server was not answering when the
+    // API server was busy answering and did so, at 35 seconds, with a 200.
+    //
+    // 300 seconds is the same budget the pipeline gives itself on a
+    // serverless function, so nothing here waits longer than the far end is
+    // ever allowed to take.
+    proxyTimeout: 300_000,
+  },
   async rewrites() {
     if (process.env.VERCEL) {
       return [];
