@@ -23,6 +23,8 @@ import { useAsync } from "@/lib/hooks";
 import { loadResearchSort, saveResearchSort } from "@/lib/keys";
 import { parseMarkdown, type Block, type InlineToken } from "@/lib/markdown";
 import type {
+  ClaimSummary,
+  ClaimVerdict,
   ResearchArticle,
   ResearchBackend,
   ResearchBody,
@@ -43,6 +45,50 @@ const SORTS: Array<Segment<ResearchSort>> = [
 
 /** The one backend that needs no key, and the one that cannot reach a publisher. */
 const HEADLINE_ONLY_BACKEND = "googlenews";
+
+/**
+ * How each verdict is shown, and the order the groups appear in.
+ *
+ * Contradictions lead because they are the reason to run a check at all: the
+ * one source that disputes a claim is worth more of the reader's attention
+ * than the nine that repeat it.
+ */
+const VERDICTS: {
+  id: ClaimVerdict;
+  label: string;
+  tone: "danger" | "ok" | "neutral";
+  heading: string;
+  hint: string;
+}[] = [
+  {
+    id: "contradicts",
+    label: "Contradicts",
+    tone: "danger",
+    heading: "States the opposite",
+    hint: "These say something incompatible with the claim.",
+  },
+  {
+    id: "supports",
+    label: "Supports",
+    tone: "ok",
+    heading: "Supports the claim",
+    hint: "These state the claim, which is not the same as confirming it. Outlets carrying one wire story are one account.",
+  },
+  {
+    id: "unaddressed",
+    label: "Does not address",
+    tone: "neutral",
+    heading: "Does not address it",
+    hint: "Read and found to say nothing either way.",
+  },
+  {
+    id: "not_assessed",
+    label: "Not assessed",
+    tone: "neutral",
+    heading: "Not assessed",
+    hint: "Nothing read these. Without an AI provider only clear opposite wording is detected, and silence is not support.",
+  },
+];
 
 /**
  * A topic search that does not touch a workspace.
@@ -85,7 +131,9 @@ export function ResearchView() {
   // A key pasted after the page loaded can make report mode possible, but the
   // reverse leaves the mode pointing at something the backend will refuse.
   useEffect(() => {
-    if (!canReport) setMode("raw");
+    // Claim mode is not in here: it degrades to the contradiction guard alone
+    // rather than becoming impossible, the same way raw mode needs nothing.
+    if (!canReport) setMode((current) => (current === "report" ? "raw" : current));
   }, [canReport]);
 
   useEffect(() => () => inFlight.current?.abort(), []);
@@ -134,8 +182,8 @@ export function ResearchView() {
       limit: RESULT_LIMIT,
       extract: true,
       sort,
-      provider: mode === "report" ? selection.provider || null : null,
-      model: mode === "report" ? selection.model || null : null,
+      provider: mode === "raw" ? null : selection.provider || null,
+      model: mode === "raw" ? null : selection.model || null,
     });
   }, [query, running, mode, chosenBackends, sort, selection, runSearch]);
 
@@ -194,7 +242,7 @@ export function ResearchView() {
 
         <fieldset className="mt-5">
           <legend className="text-sm font-medium">What you get back</legend>
-          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+          <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             <ModeCard
               active={mode === "raw"}
               onSelect={() => setMode("raw")}
@@ -222,10 +270,20 @@ export function ResearchView() {
                 )
               }
             />
+            <ModeCard
+              active={mode === "claim"}
+              onSelect={() => setMode("claim")}
+              title="Check a claim"
+              description={
+                canReport
+                  ? "Type an assertion rather than a topic. Reports what each source does with it: states the opposite, supports it, or says nothing."
+                  : "Type an assertion rather than a topic. With no AI key this flags only clear opposite wording, and leaves the rest unassessed."
+              }
+            />
           </div>
         </fieldset>
 
-        {mode === "report" && canReport ? (
+        {mode !== "raw" && canReport ? (
           <div className="mt-4 rounded-lg border border-line bg-raised p-3">
             <ProviderPicker selection={selection} onChange={setSelection} providers={providers} />
           </div>
@@ -435,6 +493,11 @@ const RAW_STAGES: Stage[] = [
 
 const REPORT_STAGES: Stage[] = [...RAW_STAGES, { after: 22, label: "Writing the brief" }];
 
+const CLAIM_STAGES: Stage[] = [
+  ...RAW_STAGES,
+  { after: 22, label: "Checking each source against your claim" },
+];
+
 /**
  * The search endpoint answers once, at the end, so there is nothing to poll.
  * Rather than a bare spinner this narrates the stages in the order they run
@@ -460,8 +523,9 @@ function ResearchProgress({
     return () => window.clearInterval(timer);
   }, [startedAt]);
 
-  const stages = mode === "report" ? REPORT_STAGES : RAW_STAGES;
-  const expected = mode === "report" ? 45 : 20;
+  const stages =
+    mode === "report" ? REPORT_STAGES : mode === "claim" ? CLAIM_STAGES : RAW_STAGES;
+  const expected = mode === "raw" ? 20 : 45;
   const reached = stages.filter((stage) => seconds >= stage.after);
   const current = reached[reached.length - 1] ?? stages[0];
   const percent = Math.min(95, Math.round((seconds / expected) * 100));
@@ -571,10 +635,24 @@ function ResearchResult({
 
   // A brief pins the numbering, so its list is only ever shown in the order the
   // backend numbered it. Changing the order there starts a fresh search instead.
+  const claim = result.claim;
+
+  // A brief pins the numbering; a claim check pins the order for a different
+  // reason, that the grouping by verdict is the answer and a date order would
+  // scatter it.
   const articles = useMemo(
-    () => (result.report ? result.articles : reorder(result.articles, result.sort, sort)),
-    [result, sort],
+    () =>
+      result.report || claim ? result.articles : reorder(result.articles, result.sort, sort),
+    [result, sort, claim],
   );
+
+  const groups = useMemo(() => {
+    if (!claim) return [];
+    return VERDICTS.map((verdict) => ({
+      ...verdict,
+      articles: articles.filter((article) => (article.verdict ?? "not_assessed") === verdict.id),
+    })).filter((group) => group.articles.length > 0);
+  }, [claim, articles]);
 
   const known = useMemo(() => new Set(articles.map((article) => article.n)), [articles]);
 
@@ -597,6 +675,8 @@ function ResearchResult({
     <div className="flex flex-col gap-5">
       <ResultSummary result={result} onSaved={onSaved} />
 
+      {claim ? <ClaimPanel claim={claim} /> : null}
+
       {result.report ? (
         <Card className="p-4 sm:p-6">
           <SectionHeading
@@ -614,6 +694,31 @@ function ResearchResult({
             Try fewer words, or a name and a place rather than a question.
           </p>
         </Card>
+      ) : claim ? (
+        <div className="flex flex-col gap-5">
+          {groups.map((group) => (
+            <section key={group.id} className="flex flex-col gap-2">
+              <div>
+                <h3 className="text-sm font-semibold">
+                  {group.heading}
+                  <span className="ml-2 font-normal tabular-nums text-faint">
+                    {group.articles.length}
+                  </span>
+                </h3>
+                <p className="mt-0.5 max-w-prose text-xs text-faint">{group.hint}</p>
+              </div>
+              <ol className="flex flex-col gap-3">
+                {group.articles.map((article) => (
+                  <ResultRow
+                    key={article.n}
+                    article={article}
+                    highlighted={highlighted === article.n}
+                  />
+                ))}
+              </ol>
+            </section>
+          ))}
+        </div>
       ) : (
         <>
           <div className="flex flex-col gap-1.5">
@@ -750,8 +855,64 @@ function ResultSummary({
   );
 }
 
+/**
+ * The tally for a claim check.
+ *
+ * It counts sources and says so. Stating a verdict here would be the one thing
+ * this feature must not do: the guard matches vocabulary and a model reads a
+ * few hundred words of each article, and neither is a basis for telling
+ * somebody an assertion is true.
+ */
+function ClaimPanel({ claim }: { claim: ClaimSummary }) {
+  const counts = VERDICTS.map((verdict) => ({
+    ...verdict,
+    value: claim[verdict.id],
+  })).filter((entry) => entry.value > 0);
+
+  return (
+    <Card className="p-4 sm:p-6">
+      <SectionHeading
+        title="What the sources do with this"
+        description={claim.note}
+      />
+      <p className="mt-3 text-base font-medium break-anywhere">{claim.text}</p>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {counts.length === 0 ? (
+          <span className="text-sm text-muted">Nothing could be assessed.</span>
+        ) : (
+          counts.map((entry) => (
+            <Badge key={entry.id} tone={entry.tone} title={entry.hint}>
+              <span className="tabular-nums">{entry.value}</span> {entry.label.toLowerCase()}
+            </Badge>
+          ))
+        )}
+      </div>
+
+      {claim.assessed_by === "guard" ? (
+        <p className="mt-3 max-w-prose text-xs text-muted">
+          Judged by the contradiction rules alone, which only recognise explicit opposites such
+          as a hold against a cut. Everything else is left unassessed rather than counted as
+          agreement.{" "}
+          <Link href="/settings" className="font-medium text-accent underline underline-offset-2">
+            Add an AI key
+          </Link>{" "}
+          to have every result read.
+        </p>
+      ) : null}
+
+      {claim.model_error ? (
+        <p className="mt-3 max-w-prose text-xs text-warn">
+          The model did not finish, so only the contradiction rules were applied: {claim.model_error}
+        </p>
+      ) : null}
+    </Card>
+  );
+}
+
 function ResultRow({ article, highlighted }: { article: ResearchArticle; highlighted: boolean }) {
   const summary = article.summary.trim();
+  const verdict = VERDICTS.find((entry) => entry.id === article.verdict);
 
   return (
     <Card
@@ -788,7 +949,28 @@ function ResultRow({ article, highlighted }: { article: ResearchArticle; highlig
             <span className="text-faint" title="How closely this matched your query">
               relevance {article.relevance.toFixed(2)}
             </span>
+            {verdict ? (
+              <Badge tone={verdict.tone} title={verdict.hint}>
+                {verdict.label}
+              </Badge>
+            ) : null}
           </div>
+
+          {/* The evidence, not just the label. A verdict a reader cannot check
+              is worth less than no verdict. */}
+          {article.quote ? (
+            <blockquote className="mt-2 border-l-2 border-line pl-3 text-sm text-ink/80 break-anywhere">
+              {article.quote}
+            </blockquote>
+          ) : null}
+          {article.guard_note ? (
+            <p className="mt-2 text-xs text-muted">
+              Wording rule: {article.guard_note}
+              {article.verdict_by === "model" && article.verdict !== "contradicts"
+                ? ". The model read both and did not treat this as a disagreement."
+                : null}
+            </p>
+          ) : null}
 
           {/* A headline only result has no body to show, and a blank paragraph
               would read as something that failed to load rather than as all

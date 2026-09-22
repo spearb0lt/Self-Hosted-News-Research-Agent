@@ -120,6 +120,8 @@ class ResearchRequest(BaseModel):
     query: str
     # "raw" ranks and lists the articles and needs no model at all.
     # "report" additionally writes a cited brief from the top results.
+    # "claim" treats the query as an assertion and reports what each source
+    # does with it. It needs no model either, but finds far more without one.
     mode: str = "raw"
     backends: list[str] | None = None
     limit: int = 25
@@ -806,7 +808,7 @@ def post_research(body: ResearchRequest) -> dict[str, Any]:
     """Search a topic across every usable backend, without creating a workspace."""
     if not body.query.strip():
         raise fail(400, "Type something to search for.")
-    mode = body.mode if body.mode in ("raw", "report") else "raw"
+    mode = body.mode if body.mode in ("raw", "report", "claim") else "raw"
     if mode == "report" and not llm.any_available():
         raise fail(
             400,

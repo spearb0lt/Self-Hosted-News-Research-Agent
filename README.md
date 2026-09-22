@@ -165,12 +165,14 @@ there about this, right now", without creating a workspace first.
 
 It fans out across every usable backend at once, Google News plus each search
 provider you hold a key for, merges the duplicates, fetches the article text,
-and ranks what is left against the query. Two modes:
+and ranks what is left against the query. Three modes:
 
 - **Just the articles.** Ranked, deduplicated and numbered. No model is called,
   so this needs no AI key at all.
 - **Written brief.** A short cited summary over the top results, with the same
   numbered list underneath it.
+- **Check a claim.** Type an assertion rather than a topic and see what each
+  source does with it.
 
 Results sort by relevance, newest or oldest. Relevance always decides which
 results make the list; the date options re-order those same results rather than
@@ -178,6 +180,34 @@ fetching whatever happened to be published most recently.
 
 **Save as workspace** turns a search into a daily beat, built from the outlets
 that actually answered it.
+
+### Checking a claim
+
+Give it a sentence rather than a subject and it groups the sources by what they
+do with it: state the opposite, support it, or say nothing either way.
+
+![A claim check, grouped by what each source does with the sentence](docs/images/claim.png)
+
+**It does not tell you whether the claim is true, and that is deliberate.** It
+counts sources and shows the line each verdict rests on, because a count of
+coverage is evidence and a verdict is a judgement. Eight outlets running one
+wire story is one account, not eight confirmations, and nothing here can tell
+the difference.
+
+Two things do the reading:
+
+- **The contradiction guard**, the same rules that stop the pipeline merging a
+  rate hold with a rate cut. Deterministic, and it names the wording it
+  matched, so you can disagree with it. It only recognises explicit opposites,
+  so it is silent far more often than not. This needs no key.
+- **A model**, when one is configured, which reads each article and quotes the
+  sentence it judged on.
+
+With no AI key at all the guard runs alone and everything it does not flag is
+reported as **not assessed** rather than as agreement. Silence is not support.
+Where the two disagree the model decides, because it read both texts while the
+guard only matched vocabulary, and the guard's finding is still shown against
+the article.
 
 ---
 
@@ -491,6 +521,7 @@ server/
   ingest/         18 source adapters, one polite HTTP client
   pipeline/       the ten stages and the resumable runner
   research.py     one-shot topic search across every backend at once
+  claims.py       what each source does with one stated claim
   delivery/       email, Slack, Discord, Telegram, webhooks, RSS, file export
   rag/            semantic search and grounded question answering
   ops/            cost meter, CLI, evaluation
@@ -523,6 +554,11 @@ across both engines.
 - **The contradiction guard is English and rule based.** It covers the outcome
   vocabulary that matters most in finance, law and politics. It will not catch
   a contradiction phrased in a way it has no word for.
+- **A claim check is only as good as what the search returned,** and a claim
+  carrying a specific date or figure is judged strictly: an article that states
+  the substance but omits the qualifier is sometimes counted as not addressing
+  it. State the claim plainly for the most useful answer, and read the quoted
+  lines rather than the tally.
 - **Research results are often undated.** Search APIs frequently return no
   publication date, so sorting a research run by date orders only the results
   that carried one.

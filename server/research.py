@@ -87,6 +87,7 @@ class ResearchResult:
     backends_failed: list[dict[str, str]] = field(default_factory=list)
     total_found: int = 0
     duplicates_removed: int = 0
+    claim: dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -100,6 +101,7 @@ class ResearchResult:
             "backends_failed": self.backends_failed,
             "total_found": self.total_found,
             "duplicates_removed": self.duplicates_removed,
+            "claim": self.claim,
         }
 
 
@@ -366,6 +368,15 @@ def research(
     if not query:
         raise ValueError("A research query cannot be empty.")
 
+    if mode == "claim":
+        # Every row in a claim check carries a verdict, so the list is cut to
+        # what the checker actually reads. Returning 25 results and judging the
+        # first 12 left the rest sitting under "not assessed", which reads as a
+        # missing key rather than as a list that was never looked at.
+        from .claims import CLAIM_CONTEXT
+
+        limit = min(limit, CLAIM_CONTEXT)
+
     deadline = Deadline(seconds)
     # With nothing specified, everything usable is tried. Each adapter reports
     # its own unavailability, so listing them all costs nothing when most have
@@ -438,6 +449,17 @@ def research(
         total_found=total,
         duplicates_removed=removed,
     )
+
+    if mode == "claim":
+        from .claims import assess
+
+        try:
+            result.claim = assess(query, ranked, provider=provider, model=model)
+        except Exception as exc:  # noqa: BLE001 - the ranked list is still useful
+            # Same bargain as the brief below. The search already succeeded and
+            # the articles are most of the value, so a failure to assess them
+            # costs the assessment rather than the whole answer.
+            result.backends_failed.append({"backend": "claim", "error": str(exc)[:300]})
 
     if mode == "report":
         try:

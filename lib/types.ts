@@ -604,7 +604,16 @@ export interface ResearchBackendsResponse {
 }
 
 /** "raw" ranks and lists articles with no model at all. "report" also writes a brief. */
-export type ResearchMode = "raw" | "report";
+export type ResearchMode = "raw" | "report" | "claim";
+
+/**
+ * What one source does with a stated claim.
+ *
+ * `not_assessed` is deliberately not `unaddressed`: it means nothing looked at
+ * this article, which happens when no model is configured and the
+ * contradiction guard found no explicit opposite. Silence is not support.
+ */
+export type ClaimVerdict = "supports" | "contradicts" | "unaddressed" | "not_assessed";
 
 /**
  * How a finished search is ordered.
@@ -630,6 +639,30 @@ export interface ResearchArticle {
   relevance: number;
   score: number;
   meta: JsonObject;
+  /* Present only in claim mode. */
+  verdict?: ClaimVerdict;
+  /** Why the guard called this a contradiction, when it did. */
+  verdict_reason?: string;
+  /** "guard" or "model", so the UI can say what decided. */
+  verdict_by?: string;
+  /** The line the model based its verdict on. */
+  quote?: string;
+  /** The guard's finding, attached even when the model decided otherwise. */
+  guard_note?: string;
+}
+
+/** The tally for a claim check. It counts sources, it does not judge truth. */
+export interface ClaimSummary {
+  text: string;
+  supports: number;
+  contradicts: number;
+  unaddressed: number;
+  not_assessed: number;
+  /** "model", "guard", or "" when nothing could assess anything. */
+  assessed_by: string;
+  /** Set when a provider failed and only the guard's findings survived. */
+  model_error: string;
+  note: string;
 }
 
 export interface ResearchFailure {
@@ -662,6 +695,8 @@ export interface ResearchResponse {
   backends_failed: ResearchFailure[];
   total_found: number;
   duplicates_removed: number;
+  /** Empty except in claim mode. */
+  claim?: ClaimSummary;
 }
 
 export interface ResearchSaveBody {
