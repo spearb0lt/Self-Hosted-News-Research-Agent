@@ -70,7 +70,7 @@ digest: 6 bullets across 7 themed sections
 Requires Python 3.12 and Node 20 or newer.
 
 ```bash
-git clone https://github.com/spearb0lt/News-Research.git newsroom && cd newsroom
+git clone https://github.com/spearb0lt/Self-Hosted-News-Research-Agent.git newsroom && cd newsroom
 
 python -m venv .venv
 source .venv/bin/activate      # Windows: .venv\Scripts\activate
