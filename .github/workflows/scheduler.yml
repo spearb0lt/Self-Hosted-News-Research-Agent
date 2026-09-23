@@ -21,10 +21,14 @@
 # every fifteen minutes, exits 1 on the missing secret, and mails a failure
 # notice each time.
 #
-# To turn it on once the app is hosted: set the two secrets above, then remove
-# the "#" from the four `schedule` lines below. The workflow can be run by hand
-# at any time from the Actions tab without doing that, which is also the
-# easiest way to check the secrets are right before letting it run unattended.
+# To turn it on once the app is hosted: set the two secrets above, then delete
+# the leading "# " from each of the six commented lines under `on:` below, so
+# that `schedule:` and its two `cron:` entries are live YAML again. Commit and
+# push, and GitHub picks the schedule up from the default branch.
+#
+# The workflow can be run by hand from the Actions tab at any time without
+# doing that, which is also the easiest way to check the two secrets are right
+# before letting it run unattended.
 
 name: Pipeline scheduler
 

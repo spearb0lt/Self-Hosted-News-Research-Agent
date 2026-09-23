@@ -265,7 +265,7 @@ both in `vercel.json` directly.
 no `APP_URL` to call, and a schedule pointed at a missing secret does not fail
 quietly: it wakes every fifteen minutes to exit with an error and mail you
 about it. To turn it on, add `APP_URL` and `CRON_SECRET` as repository secrets
-and uncomment the four `schedule` lines at the top of the file. It can be run
+and uncomment the six `schedule` lines under `on:` in that file. It can be run
 by hand from the Actions tab either way, which is the easiest way to check the
 secrets before letting it run unattended.
 
