@@ -15,16 +15,26 @@
 # Actions:
 #   APP_URL      https://your-deployment.vercel.app
 #   CRON_SECRET  the same value you set in the Vercel environment
+#
+# THE SCHEDULE IS OFF. There is nothing deployed for it to drive yet, and a
+# schedule that runs against an unset APP_URL does not sit quietly: it wakes
+# every fifteen minutes, exits 1 on the missing secret, and mails a failure
+# notice each time.
+#
+# To turn it on once the app is hosted: set the two secrets above, then remove
+# the "#" from the four `schedule` lines below. The workflow can be run by hand
+# at any time from the Actions tab without doing that, which is also the
+# easiest way to check the secrets are right before letting it run unattended.
 
 name: Pipeline scheduler
 
 on:
-  schedule:
-    # 01:00 UTC, the daily full run. Pick a time when your sources have
-    # published; this is 06:30 in India.
-    - cron: "0 1 * * *"
-    # Every 15 minutes, continue anything that paused at the time limit.
-    - cron: "*/15 * * * *"
+  # schedule:
+  #   # 01:00 UTC, the daily full run. Pick a time when your sources have
+  #   # published; this is 06:30 in India.
+  #   - cron: "0 1 * * *"
+  #   # Every 15 minutes, continue anything that paused at the time limit.
+  #   - cron: "*/15 * * * *"
   workflow_dispatch:
     inputs:
       full_run:

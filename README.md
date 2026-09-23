@@ -258,9 +258,16 @@ The bundle comes to roughly 310 MB against Vercel's 500 MB Python limit.
 A run that pauses at the 300 second limit therefore needs something to continue
 it. `.github/workflows/scheduler.yml` does this for free: it starts the daily
 run and pokes `/api/cron/tick` every fifteen minutes, which is a no-op when
-nothing is waiting. Add `APP_URL` and `CRON_SECRET` as repository secrets and it
-works. On Vercel Pro you can delete that workflow and schedule both in
-`vercel.json` directly.
+nothing is waiting. On Vercel Pro you can delete that workflow and schedule
+both in `vercel.json` directly.
+
+**Its schedule ships commented out,** because a clone with nothing deployed has
+no `APP_URL` to call, and a schedule pointed at a missing secret does not fail
+quietly: it wakes every fifteen minutes to exit with an error and mail you
+about it. To turn it on, add `APP_URL` and `CRON_SECRET` as repository secrets
+and uncomment the four `schedule` lines at the top of the file. It can be run
+by hand from the Actions tab either way, which is the easiest way to check the
+secrets before letting it run unattended.
 
 Once `CRON_SECRET` is set the scheduler routes refuse any request without it,
 so they are safe to leave exposed.
